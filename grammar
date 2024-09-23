@@ -1,0 +1,35 @@
+program    = statement* EOF
+
+statement  = varDecl
+           | fnDecl
+           | forStmt
+           | whileStmt
+           | exprStmt
+           | returnStmt
+           | block
+
+varDecl    = "var" IDENTIFIER ( "=" expression )? ";"
+fnDecl     = "fn" "(" parameters? ")" block
+forStmt    = "for" IDENTIFIER "in" INTEGER ".." INTEGER block
+whlieStmt  = "while" expression block
+exprStmt   = expression ";"
+returnStmt = "return" expression ";"
+block      = "{" statement* "}"
+
+expression = assignment
+
+assignment = ( call "." )? IDENTIFIER "=" assignment
+           | logic_or
+
+logic_or   = logic_and ( "||" logic_and )*
+logic_and  = equality ( "&&" equality )*
+equality   = comparison ( ( "==" | "!=" ) comparison )*
+comparison = term ( ( ">" | ">=" | "<" | "<=" ) term )*
+term       = factor ( ( "-" | "+" ) factor )*
+factor     = unary ( ( "/" | "*" ) unary )*
+
+unary      = ( "!" | "-" ) unary | call
+call       = primary ( "(" arguments? ")" | "." IDENTIFIER )*
+
+parameters = IDENTIFIER ( "," IDENTIFIER )*
+arguments  = expression ( "," expression )*

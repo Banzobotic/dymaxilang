@@ -3,14 +3,14 @@ use std::ptr::NonNull;
 use super::value::Value;
 
 pub struct Stack {
-    // TODO: make stack use MaybeUninit data
-    stack: [Value; 256],
+    #[allow(unused)]
+    stack: Vec<Value>,
     top: NonNull<Value>,
 }
 
 impl Stack {
     pub fn new() -> Self {
-        let mut stack = [0; 256];
+        let mut stack = Vec::with_capacity(256);
         let top = unsafe { NonNull::new_unchecked(stack.as_mut_ptr()) };
 
         Self { stack, top }
@@ -28,5 +28,15 @@ impl Stack {
             self.top = self.top.sub(1);
             self.top.read()
         }
+    }
+
+    pub fn peek(&mut self) -> Value {
+        unsafe {
+            self.top.read()
+        }
+    }
+
+    pub fn top(&self) -> NonNull<Value> {
+        self.top
     }
 }
