@@ -25,15 +25,19 @@ impl VM {
                     let b = self.stack.pop();
                     let a = self.stack.pop();
 
-                    unsafe { self.stack.push(Value::new_float(a.as_float() $op b.as_float())) };
+                    self.stack.push(Value::float(a.as_float() $op b.as_float()));
                 }
             };
         }
-        
+
         loop {
             use chunk::OpCode as Op;
             match unsafe { self.chunk.next_opcode() } {
                 Op::LoadConstant => self.stack.push(self.chunk.next_constant()),
+                Op::Nil => self.stack.push(Value::NIL),
+                Op::Pop => {
+                    self.stack.pop();
+                }
                 Op::Add => binary_op!(+),
                 Op::Sub => binary_op!(-),
                 Op::Mul => binary_op!(*),
@@ -44,13 +48,35 @@ impl VM {
                     }
                     unsafe {
                         let top_ptr = self.stack.top().sub(1);
-                        top_ptr.write(Value::new_float(-top_ptr.read().as_float()))
+                        top_ptr.write(Value::float(-top_ptr.read().as_float()))
                     }
                 }
-                Op::Return => {
-                    println!("{}", self.stack.pop());
-                    return;
+                Op::DefineGlobal => {
+                    let idx = self.chunk.next_byte();
+                    self.chunk.set_global(idx, self.stack.pop());
                 }
+                Op::GetGlobal => {
+                    let idx = self.chunk.next_byte();
+                    let value = self.chunk.get_global(idx);
+
+                    if value.is_undef() {
+                        panic!("Attempted to get value of undefined variable");
+                    }
+
+                    self.stack.push(value);
+                }
+                Op::SetGlobal => {
+                    let idx = self.chunk.next_byte();
+                    let prev_value = self.chunk.get_global(idx);
+
+                    if prev_value.is_undef() {
+                        panic!("Attemped to set value of undefined variable");
+                    }
+
+                    self.chunk.set_global(idx, self.stack.pop());
+                }
+                Op::Print => println!("{}", self.stack.pop()),
+                Op::Return => return,
             }
         }
     }

@@ -1,6 +1,9 @@
-use lexer::{Lexer, Token, TokenKind, OpKind, AtomKind};
+use lexer::{AtomKind, Lexer, OpKind, Token, TokenKind};
 
-use crate::vm::{chunk::{Chunk, OpCode}, value::Value};
+use crate::vm::{
+    chunk::{Chunk, OpCode},
+    value::Value,
+};
 
 mod lexer;
 
@@ -15,7 +18,7 @@ impl Parser {
         let mut lexer = Lexer::new(program);
         let current = lexer.next_token();
         println!("Token: {:?}", current.kind);
-        Parser { 
+        Parser {
             lexer,
             previous: None,
             current,
@@ -23,7 +26,8 @@ impl Parser {
     }
 
     pub fn previous(&mut self) -> Token {
-        self.previous.expect("Can't access previous before advancing parser")
+        self.previous
+            .expect("Can't access previous before advancing parser")
     }
 
     pub fn current(&mut self) -> Token {
@@ -74,14 +78,28 @@ impl Compiler {
     fn number(&mut self) {
         let token = self.parser.previous();
         let value = self.parser.lexer.get_token_string(&token).parse().unwrap();
-        self.chunk.push_constant(Value::new_float(value));
+        self.chunk.push_constant(Value::float(value));
+    }
+
+    fn identifier(&mut self) {
+        let token = self.parser.previous();
+        let name = &self.parser.lexer.program()[token.start..token.end];
+        let global_idx = self.chunk.get_global_idx(name);
+
+        if self.parser.check(TokenKind::Op(OpKind::Equal)) {
+            self.expression();
+            self.chunk.push_opcode(OpCode::SetGlobal);
+        } else {
+            self.chunk.push_opcode(OpCode::GetGlobal);
+            self.chunk.push_byte(global_idx);
+        }
     }
 
     fn expression_bp(&mut self, min_bp: u8) {
         fn prefix_bp(op: OpKind) -> ((), u8) {
             match op {
                 OpKind::Minus => ((), 15),
-                _ => panic!("Can't use {:?} here", op)
+                _ => panic!("Can't use {:?} here", op),
             }
         }
 
@@ -93,13 +111,14 @@ impl Compiler {
             };
             Some(ret)
         }
-        
+
         self.parser.advance();
         match self.parser.previous().kind {
             TokenKind::Atom(it) => match it {
                 AtomKind::Number => self.number(),
-                _ => unimplemented!()
-            }
+                AtomKind::Ident => self.identifier(),
+                _ => unimplemented!(),
+            },
             TokenKind::Op(OpKind::OpenParen) => {
                 self.expression_bp(0);
                 assert!(self.parser.check(TokenKind::Op(OpKind::CloseParen)));
@@ -107,22 +126,16 @@ impl Compiler {
             TokenKind::Op(op) => {
                 let ((), r_bp) = prefix_bp(op);
                 self.expression_bp(r_bp);
-                
+
                 match op {
                     OpKind::Minus => self.chunk.push_opcode(OpCode::Negate),
-                    _ => unreachable!("Error handled in prefix_bp call")
+                    _ => unreachable!("Error handled in prefix_bp call"),
                 }
             }
-            token => panic!("Unexpected token: {:?}", token)
+            token => panic!("Unexpected token: {:?}", token),
         }
 
-        loop {
-            let op = match self.parser.current().kind {
-                TokenKind::Eof => break,
-                TokenKind::Op(op) => op,
-                token => panic!("Unexpected token: {:?}", token)
-            };
-
+        while let TokenKind::Op(op) = self.parser.current().kind {
             if let Some((l_bp, r_bp)) = infix_bp(op) {
                 if l_bp < min_bp {
                     break;
@@ -150,8 +163,59 @@ impl Compiler {
         self.expression_bp(0);
     }
 
-    pub fn compile(&mut self) -> Chunk {
+    fn expression_statement(&mut self) {
         self.expression();
+        self.chunk.push_opcode(OpCode::Pop);
+    }
+
+    fn print_statement(&mut self) {
+        self.expression();
+        self.chunk.push_opcode(OpCode::Print);
+        self.parser.consume(TokenKind::SemiColon)
+    }
+
+    fn parse_variable(&mut self, error_message: &str) -> u8 {
+        self.parser.consume(TokenKind::Atom(AtomKind::Ident));
+
+        let ident = self.parser.previous();
+        self.chunk
+            .get_global_idx(&self.parser.lexer.program()[ident.start..ident.end])
+    }
+
+    fn define_variable(&mut self, global_idx: u8) {
+        self.chunk.push_opcode(OpCode::DefineGlobal);
+        self.chunk.push_byte(global_idx);
+    }
+
+    fn var_decl(&mut self) {
+        let global_idx = self.parse_variable("Expect variable name");
+
+        if self.parser.check(TokenKind::Op(OpKind::Equal)) {
+            self.expression();
+        } else {
+            self.chunk.push_opcode(OpCode::Nil);
+        }
+
+        self.parser.consume(TokenKind::SemiColon);
+
+        self.define_variable(global_idx);
+    }
+
+    fn statement(&mut self) {
+        if self.parser.check(TokenKind::Let) {
+            self.var_decl();
+        } else if self.parser.check(TokenKind::Print) {
+            self.print_statement();
+        } else {
+            self.expression_statement();
+        }
+    }
+
+    pub fn compile(&mut self) -> Chunk {
+        while !self.parser.compare_next(TokenKind::Eof) {
+            self.statement();
+        }
+
         self.chunk.push_opcode(OpCode::Return);
 
         self.chunk.clone()

@@ -2,6 +2,14 @@
 pub enum TokenKind {
     Op(OpKind),
     Atom(AtomKind),
+    SemiColon,
+    Fn,
+    For,
+    Let,
+    Nil,
+    Print,
+    Return,
+    While,
     Eof,
 }
 
@@ -11,6 +19,8 @@ pub enum OpKind {
     Minus,
     Mul,
     Div,
+    Equal,
+    DoubleEqual,
     OpenParen,
     CloseParen,
 }
@@ -32,7 +42,11 @@ pub struct Token {
 
 impl Token {
     pub fn new(kind: TokenKind, line: u32, start: usize, end: usize) -> Self {
-        Self { kind, line, start, end }
+        Self {
+            kind,
+            line,
+            start,
+            end,
+        }
     }
 }
-

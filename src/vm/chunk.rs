@@ -1,15 +1,21 @@
-use std::ptr::NonNull;
+use std::{collections::HashMap, ptr::NonNull};
 
 use super::value::Value;
 
 #[repr(u8)]
 pub enum OpCode {
     LoadConstant,
+    Nil,
+    Pop,
     Add,
     Sub,
     Mul,
     Div,
     Negate,
+    DefineGlobal,
+    GetGlobal,
+    SetGlobal,
+    Print,
     Return,
 }
 
@@ -18,6 +24,8 @@ pub struct Chunk {
     stack: Vec<u8>,
     ip: NonNull<u8>,
     constants: Vec<Value>,
+    globals: Vec<Value>,
+    global_names: HashMap<String, u8>,
 }
 
 impl Chunk {
@@ -25,9 +33,14 @@ impl Chunk {
         let mut stack = Vec::with_capacity(8);
         // SAFETY: stack is already initialised so pointer to it is non-null
         let ip = unsafe { NonNull::new_unchecked(stack.as_mut_ptr()) };
-        let constants = Vec::new();
 
-        Self { stack, ip, constants }
+        Self {
+            stack,
+            ip,
+            constants: Vec::new(),
+            globals: Vec::new(),
+            global_names: HashMap::new(),
+        }
     }
 
     fn add_constant(&mut self, constant: Value) -> u8 {
@@ -74,5 +87,25 @@ impl Chunk {
         let byte = unsafe { self.ip.read() };
         self.ip = unsafe { self.ip.add(1) };
         byte
-    } 
+    }
+
+    pub fn get_global_idx(&mut self, name: &str) -> u8 {
+        match self.global_names.get(name) {
+            Some(idx) => *idx,
+            None => {
+                let len = self.globals.len() as u8;
+                self.global_names.insert(name.to_owned(), len);
+                self.globals.push(Value::UNDEF);
+                len
+            }
+        }
+    }
+
+    pub fn get_global(&mut self, idx: u8) -> Value {
+        self.globals[idx as usize]
+    }
+
+    pub fn set_global(&mut self, idx: u8, value: Value) {
+        self.globals[idx as usize] = value;
+    }
 }

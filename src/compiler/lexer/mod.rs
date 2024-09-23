@@ -1,4 +1,4 @@
-pub use token::{Token, TokenKind, OpKind, AtomKind};
+pub use token::{AtomKind, OpKind, Token, TokenKind};
 
 mod token;
 
@@ -11,7 +11,16 @@ pub struct Lexer {
 
 impl Lexer {
     pub fn new(program: String) -> Self {
-        Self { program, start: 0, position: 0, line: 1 }
+        Self {
+            program,
+            start: 0,
+            position: 0,
+            line: 1,
+        }
+    }
+
+    pub fn program(&self) -> &str {
+        &self.program
     }
 
     fn is_alpha(c: char) -> bool {
@@ -49,10 +58,39 @@ impl Lexer {
         Token::new(kind, self.line, self.start, self.position)
     }
 
-    fn identifier(&mut self) -> Token {
-        while Self::is_alphanumeric(self.advance()) {}
+    fn identifier_type(&self) -> TokenKind {
+        let identifier = &self.program[self.start..self.position];
 
-        self.make_token(TokenKind::Atom(AtomKind::Ident))
+        let check_keyword = |start, rest, kind| {
+            if &identifier[start..] == rest {
+                kind
+            } else {
+                TokenKind::Atom(AtomKind::Ident)
+            }
+        };
+
+        let mut cs = identifier.chars();
+        match cs.next().unwrap() {
+            'f' => match cs.next().unwrap() {
+                'n' => TokenKind::Fn,
+                'o' => check_keyword(2, "r", TokenKind::For),
+                _ => TokenKind::Atom(AtomKind::Ident),
+            },
+            'l' => check_keyword(1, "et", TokenKind::Let),
+            'n' => check_keyword(1, "il", TokenKind::Nil),
+            'p' => check_keyword(1, "rint", TokenKind::Print),
+            'r' => check_keyword(1, "eturn", TokenKind::Return),
+            'w' => check_keyword(1, "hile", TokenKind::While),
+            _ => TokenKind::Atom(AtomKind::Ident),
+        }
+    }
+
+    fn identifier(&mut self) -> Token {
+        while Self::is_alphanumeric(self.peek()) {
+            self.advance();
+        }
+
+        self.make_token(self.identifier_type())
     }
 
     fn number(&mut self) -> Token {
@@ -65,6 +103,16 @@ impl Lexer {
         }
 
         self.make_token(TokenKind::Atom(AtomKind::Number))
+    }
+
+    fn string(&mut self) -> Token {
+        while self.peek() != '"' {
+            if self.advance() == '\n' {
+                self.line += 1;
+            }
+        }
+
+        self.make_token(TokenKind::Atom(AtomKind::String))
     }
 
     pub fn next_token(&mut self) -> Token {
@@ -80,13 +128,22 @@ impl Lexer {
                             self.advance();
                         }
                     } else {
-                        return self.make_token(TokenKind::Op(OpKind::Div))
+                        return self.make_token(TokenKind::Op(OpKind::Div));
+                    }
+                }
+                '=' => {
+                    if self.check('=') {
+                        return self.make_token(TokenKind::Op(OpKind::DoubleEqual));
+                    } else {
+                        return self.make_token(TokenKind::Op(OpKind::Equal));
                     }
                 }
                 '(' => return self.make_token(TokenKind::Op(OpKind::OpenParen)),
                 ')' => return self.make_token(TokenKind::Op(OpKind::CloseParen)),
                 'a'..='z' | 'A'..='Z' | '_' => return self.identifier(),
                 '0'..='9' => return self.number(),
+                '"' => return self.string(),
+                ';' => return self.make_token(TokenKind::SemiColon),
                 '\n' => {
                     self.line += 1;
                 }
@@ -99,6 +156,5 @@ impl Lexer {
 
     pub fn get_token_string(&self, token: &Token) -> &str {
         &self.program[token.start..token.end]
-    } 
+    }
 }
-

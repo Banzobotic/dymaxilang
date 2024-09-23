@@ -11,4 +11,3 @@ fn main() {
     let mut vm = VM::new(stack);
     vm.run();
 }
-
