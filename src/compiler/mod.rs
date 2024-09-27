@@ -62,9 +62,16 @@ impl Parser {
     }
 }
 
+struct Local {
+    name: String,
+    depth: Option<u32>,
+}
+
 pub struct Compiler {
     parser: Parser,
     chunk: Chunk,
+    locals: Vec<Local>,
+    scope_depth: u32,
 }
 
 impl Compiler {
@@ -72,6 +79,8 @@ impl Compiler {
         Self {
             parser: Parser::new(program),
             chunk: Chunk::new(),
+            locals: Vec::new(),
+            scope_depth: 0,
         }
     }
 
@@ -81,17 +90,46 @@ impl Compiler {
         self.chunk.push_constant(Value::float(value));
     }
 
+    fn resolve_local(&self, name: &str) -> Option<u8> {
+        for (i, local) in self.locals.iter().enumerate().rev() {
+            if local.depth.is_none() {
+                panic!("Can't reference local in its own initialiser");
+            }
+            if name == local.name {
+                return Some(i as u8);
+            }
+        }
+
+        None
+    }
+
     fn identifier(&mut self) {
-        let token = self.parser.previous();
-        let name = &self.parser.lexer.program()[token.start..token.end];
-        let global_idx = self.chunk.get_global_idx(name);
+        let (get_op, set_op);
+        let name = &self
+            .parser
+            .previous()
+            .lexeme_str(self.parser.lexer.program());
+        let mut arg = self.resolve_local(name);
+
+        match arg {
+            Some(_) => {
+                get_op = OpCode::GetLocal;
+                set_op = OpCode::SetLocal;
+            }
+            None => {
+                arg = Some(self.chunk.get_global_idx(name));
+                get_op = OpCode::GetGlobal;
+                set_op = OpCode::SetGlobal;
+            }
+        }
 
         if self.parser.check(TokenKind::Op(OpKind::Equal)) {
             self.expression();
-            self.chunk.push_opcode(OpCode::SetGlobal);
+            self.chunk.push_opcode(set_op);
+            self.chunk.push_byte(arg.unwrap());
         } else {
-            self.chunk.push_opcode(OpCode::GetGlobal);
-            self.chunk.push_byte(global_idx);
+            self.chunk.push_opcode(get_op);
+            self.chunk.push_byte(arg.unwrap());
         }
     }
 
@@ -165,6 +203,7 @@ impl Compiler {
 
     fn expression_statement(&mut self) {
         self.expression();
+        self.parser.consume(TokenKind::SemiColon);
         self.chunk.push_opcode(OpCode::Pop);
     }
 
@@ -174,15 +213,89 @@ impl Compiler {
         self.parser.consume(TokenKind::SemiColon)
     }
 
+    fn begin_scope(&mut self) {
+        self.scope_depth += 1;
+    }
+
+    fn end_scope(&mut self) {
+        self.scope_depth -= 1;
+
+        while let Some(local) = self.locals.last() {
+            if local.depth.unwrap() <= self.scope_depth {
+                break;
+            }
+
+            self.chunk.push_opcode(OpCode::Pop);
+            self.locals.pop();
+        }
+    }
+
+    fn block(&mut self) {
+        while !self.parser.compare_next(TokenKind::CloseBrace)
+            && !self.parser.compare_next(TokenKind::Eof)
+        {
+            self.statement();
+        }
+
+        self.parser.consume(TokenKind::CloseBrace)
+    }
+
+    fn add_local(&mut self, name: String) {
+        if self.locals.len() == 256 {
+            panic!("Too many local variables");
+        }
+
+        self.locals.push(Local { name, depth: None });
+    }
+
+    fn declare_variable(&mut self) {
+        if self.scope_depth == 0 {
+            return;
+        }
+
+        let name = self
+            .parser
+            .previous()
+            .lexeme_str(self.parser.lexer.program());
+
+        for local in self.locals.iter().rev() {
+            if local.depth.unwrap() < self.scope_depth {
+                break;
+            }
+
+            if name == local.name {
+                panic!("Already a variable with this name in this scope.");
+            }
+        }
+
+        self.add_local(name.to_owned());
+    }
+
     fn parse_variable(&mut self, error_message: &str) -> u8 {
         self.parser.consume(TokenKind::Atom(AtomKind::Ident));
 
-        let ident = self.parser.previous();
-        self.chunk
-            .get_global_idx(&self.parser.lexer.program()[ident.start..ident.end])
+        self.declare_variable();
+        if self.scope_depth > 0 {
+            return 0;
+        }
+
+        self.chunk.get_global_idx(
+            self.parser
+                .previous()
+                .lexeme_str(self.parser.lexer.program()),
+        )
+    }
+
+    fn mark_initialised(&mut self) {
+        self.locals.last_mut().unwrap().depth = Some(self.scope_depth);
     }
 
     fn define_variable(&mut self, global_idx: u8) {
+        if self.scope_depth > 0 {
+            self.mark_initialised();
+            return;
+        }
+
         self.chunk.push_opcode(OpCode::DefineGlobal);
         self.chunk.push_byte(global_idx);
     }
@@ -206,6 +319,10 @@ impl Compiler {
             self.var_decl();
         } else if self.parser.check(TokenKind::Print) {
             self.print_statement();
+        } else if self.parser.check(TokenKind::OpenBrace) {
+            self.begin_scope();
+            self.block();
+            self.end_scope();
         } else {
             self.expression_statement();
         }

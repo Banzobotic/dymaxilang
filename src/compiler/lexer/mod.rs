@@ -99,7 +99,9 @@ impl Lexer {
         }
 
         if self.check('.') {
-            while Self::is_numeric(self.advance()) {}
+            while Self::is_numeric(self.peek()) {
+                self.advance();
+            }
         }
 
         self.make_token(TokenKind::Atom(AtomKind::Number))
@@ -138,6 +140,8 @@ impl Lexer {
                         return self.make_token(TokenKind::Op(OpKind::Equal));
                     }
                 }
+                '{' => return self.make_token(TokenKind::OpenBrace),
+                '}' => return self.make_token(TokenKind::CloseBrace),
                 '(' => return self.make_token(TokenKind::Op(OpKind::OpenParen)),
                 ')' => return self.make_token(TokenKind::Op(OpKind::CloseParen)),
                 'a'..='z' | 'A'..='Z' | '_' => return self.identifier(),

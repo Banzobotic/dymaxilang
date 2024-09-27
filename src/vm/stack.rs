@@ -30,11 +30,19 @@ impl Stack {
         }
     }
 
-    pub fn peek(&mut self) -> Value {
-        unsafe { self.top.read() }
+    pub fn peek(&mut self, position: usize) -> Value {
+        unsafe { self.top.sub(position + 1).read() }
     }
 
     pub fn top(&self) -> NonNull<Value> {
         self.top
+    }
+
+    pub fn base(&self) -> *const Value {
+        self.stack.as_ptr()
+    }
+
+    pub fn base_mut(&mut self) -> *mut Value {
+        self.stack.as_mut_ptr()
     }
 }

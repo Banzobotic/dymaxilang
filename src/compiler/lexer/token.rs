@@ -3,6 +3,8 @@ pub enum TokenKind {
     Op(OpKind),
     Atom(AtomKind),
     SemiColon,
+    OpenBrace,
+    CloseBrace,
     Fn,
     For,
     Let,
@@ -48,5 +50,9 @@ impl Token {
             start,
             end,
         }
+    }
+
+    pub fn lexeme_str<'a>(&self, program: &'a str) -> &'a str {
+        &program[self.start..self.end]
     }
 }

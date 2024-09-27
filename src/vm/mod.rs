@@ -43,7 +43,7 @@ impl VM {
                 Op::Mul => binary_op!(*),
                 Op::Div => binary_op!(/),
                 Op::Negate => {
-                    if !self.stack.peek().is_float() {
+                    if !self.stack.peek(0).is_float() {
                         panic!("Can only negate numbers");
                     }
                     unsafe {
@@ -73,7 +73,13 @@ impl VM {
                         panic!("Attemped to set value of undefined variable");
                     }
 
-                    self.chunk.set_global(idx, self.stack.pop());
+                    self.chunk.set_global(idx, self.stack.peek(0));
+                }
+                Op::GetLocal => unsafe {
+                    self.stack.push(self.stack.base().add(self.chunk.next_byte() as usize).read());
+                }
+                Op::SetLocal => unsafe {
+                    self.stack.base_mut().add(self.chunk.next_byte() as usize).write(self.stack.peek(0));
                 }
                 Op::Print => println!("{}", self.stack.pop()),
                 Op::Return => return,

@@ -1,4 +1,7 @@
-let a = 10;
-let b = 2 * a;
-let lalala = a + b * b;
-print lalala / a;
+{
+	let a = 10;
+	let b = 2 * a;
+	b = 3 * a;
+	let lalala = a + b * b;
+	print lalala / a;
+}
