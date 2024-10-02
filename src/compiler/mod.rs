@@ -92,10 +92,11 @@ impl Compiler {
 
     fn resolve_local(&self, name: &str) -> Option<u8> {
         for (i, local) in self.locals.iter().enumerate().rev() {
-            if local.depth.is_none() {
-                panic!("Can't reference local in its own initialiser");
-            }
             if name == local.name {
+                if local.depth.is_none() {
+                    panic!("Can't reference local in its own initialiser");
+                }
+
                 return Some(i as u8);
             }
         }
