@@ -72,14 +72,16 @@ impl Lexer {
         let mut cs = identifier.chars();
         match cs.next().unwrap() {
             'f' => match cs.next().unwrap() {
+                'a' => check_keyword(2, "lse", TokenKind::Atom(AtomKind::False)),
                 'n' => TokenKind::Fn,
                 'o' => check_keyword(2, "r", TokenKind::For),
                 _ => TokenKind::Atom(AtomKind::Ident),
             },
             'l' => check_keyword(1, "et", TokenKind::Let),
-            'n' => check_keyword(1, "il", TokenKind::Nil),
+            'n' => check_keyword(1, "ull", TokenKind::Atom(AtomKind::Null)),
             'p' => check_keyword(1, "rint", TokenKind::Print),
             'r' => check_keyword(1, "eturn", TokenKind::Return),
+            't' => check_keyword(1, "rue", TokenKind::Atom(AtomKind::True)),
             'w' => check_keyword(1, "hile", TokenKind::While),
             _ => TokenKind::Atom(AtomKind::Ident),
         }
@@ -140,10 +142,31 @@ impl Lexer {
                         return self.make_token(TokenKind::Op(OpKind::Equal));
                     }
                 }
-                '{' => return self.make_token(TokenKind::OpenBrace),
-                '}' => return self.make_token(TokenKind::CloseBrace),
+                '!' => {
+                    if self.check('=') {
+                        return self.make_token(TokenKind::Op(OpKind::BangEqual));
+                    } else {
+                        return self.make_token(TokenKind::Op(OpKind::Bang));
+                    }
+                }
+                '>' => {
+                    if self.check('=') {
+                        return self.make_token(TokenKind::Op(OpKind::GreaterEqual));
+                    } else {
+                        return self.make_token(TokenKind::Op(OpKind::Greater));
+                    }
+                }
+                '<' => {
+                    if self.check('=') {
+                        return self.make_token(TokenKind::Op(OpKind::LessEqual));
+                    } else {
+                        return self.make_token(TokenKind::Op(OpKind::Less));
+                    }
+                }
                 '(' => return self.make_token(TokenKind::Op(OpKind::OpenParen)),
                 ')' => return self.make_token(TokenKind::Op(OpKind::CloseParen)),
+                '{' => return self.make_token(TokenKind::OpenBrace),
+                '}' => return self.make_token(TokenKind::CloseBrace),
                 'a'..='z' | 'A'..='Z' | '_' => return self.identifier(),
                 '0'..='9' => return self.number(),
                 '"' => return self.string(),

@@ -8,7 +8,6 @@ pub enum TokenKind {
     Fn,
     For,
     Let,
-    Nil,
     Print,
     Return,
     While,
@@ -17,12 +16,18 @@ pub enum TokenKind {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OpKind {
+    Bang,
     Plus,
     Minus,
     Mul,
     Div,
     Equal,
     DoubleEqual,
+    BangEqual,
+    GreaterEqual,
+    LessEqual,
+    Greater,
+    Less,
     OpenParen,
     CloseParen,
 }
@@ -32,6 +37,9 @@ pub enum AtomKind {
     Ident,
     Number,
     String,
+    True,
+    False,
+    Null,
 }
 
 #[derive(Clone, Copy)]

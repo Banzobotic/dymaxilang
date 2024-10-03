@@ -137,6 +137,7 @@ impl Compiler {
     fn expression_bp(&mut self, min_bp: u8) {
         fn prefix_bp(op: OpKind) -> ((), u8) {
             match op {
+                OpKind::Bang => ((), 15),
                 OpKind::Minus => ((), 15),
                 _ => panic!("Can't use {:?} here", op),
             }
@@ -144,6 +145,10 @@ impl Compiler {
 
         fn infix_bp(op: OpKind) -> Option<(u8, u8)> {
             let ret = match op {
+                OpKind::DoubleEqual | OpKind::BangEqual => (7, 8),
+                OpKind::Greater | OpKind::GreaterEqual | OpKind::Less | OpKind::LessEqual => {
+                    (9, 10)
+                }
                 OpKind::Plus | OpKind::Minus => (11, 12),
                 OpKind::Mul | OpKind::Div => (13, 14),
                 _ => return None,
@@ -156,6 +161,9 @@ impl Compiler {
             TokenKind::Atom(it) => match it {
                 AtomKind::Number => self.number(),
                 AtomKind::Ident => self.identifier(),
+                AtomKind::True => self.chunk.push_constant(Value::TRUE),
+                AtomKind::False => self.chunk.push_constant(Value::FALSE),
+                AtomKind::Null => self.chunk.push_constant(Value::NULL),
                 _ => unimplemented!(),
             },
             TokenKind::Op(OpKind::OpenParen) => {
@@ -167,6 +175,7 @@ impl Compiler {
                 self.expression_bp(r_bp);
 
                 match op {
+                    OpKind::Bang => self.chunk.push_opcode(OpCode::Not),
                     OpKind::Minus => self.chunk.push_opcode(OpCode::Negate),
                     _ => unreachable!("Error handled in prefix_bp call"),
                 }
@@ -188,6 +197,12 @@ impl Compiler {
                     OpKind::Minus => self.chunk.push_opcode(OpCode::Sub),
                     OpKind::Mul => self.chunk.push_opcode(OpCode::Mul),
                     OpKind::Div => self.chunk.push_opcode(OpCode::Div),
+                    OpKind::DoubleEqual => self.chunk.push_opcode(OpCode::Equal),
+                    OpKind::BangEqual => self.chunk.push_opcode(OpCode::NotEqual),
+                    OpKind::Greater => self.chunk.push_opcode(OpCode::Greater),
+                    OpKind::GreaterEqual => self.chunk.push_opcode(OpCode::GreaterEqual),
+                    OpKind::Less => self.chunk.push_opcode(OpCode::Less),
+                    OpKind::LessEqual => self.chunk.push_opcode(OpCode::LessEqual),
                     token => panic!("Unexpected token: {:?}", token),
                 }
 

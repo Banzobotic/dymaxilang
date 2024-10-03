@@ -1,7 +1,13 @@
-{
-	let a = 10;
-	let b = 2 * a;
-	b = 3 * a;
-	let lalala = a + b * b;
-	print lalala / a;
-}
+print true == true;
+print false == true;
+print false != true;
+print 10 == 10;
+print 10 != 10;
+print 10 == 20;
+print 10 == 10.1;
+print 10 > 10.1;
+print 10 < 10.1;
+print 10 > 10;
+print 10 >= 10;
+print 10 <= 10;
+print !(10 <= 10);

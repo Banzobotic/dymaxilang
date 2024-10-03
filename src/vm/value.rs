@@ -5,21 +5,21 @@ const SIGN_BIT: u64 = 0x8000000000000000;
 const QNAN: u64 = 0x7ffc000000000000;
 
 const TAG_UNDEF: u64 = 4;
-const TAG_NIL: u64 = 1;
+const TAG_NULL: u64 = 1;
 const TAG_FALSE: u64 = 2;
 const TAG_TRUE: u64 = 3;
 
 #[derive(Clone, Copy)]
 pub struct Value {
-    value: u64,
+    pub value: u64,
 }
 
 impl Value {
     pub const UNDEF: Self = Self {
         value: QNAN | TAG_UNDEF,
     };
-    pub const NIL: Self = Self {
-        value: QNAN | TAG_NIL,
+    pub const NULL: Self = Self {
+        value: QNAN | TAG_NULL,
     };
     pub const TRUE: Self = Self {
         value: QNAN | TAG_TRUE,
@@ -32,6 +32,14 @@ impl Value {
         unsafe { mem::transmute(value) }
     }
 
+    pub fn bool(value: bool) -> Self {
+        if value {
+            Value::TRUE
+        } else {
+            Value::FALSE
+        }
+    }
+
     pub fn is_float(&self) -> bool {
         self.value & QNAN != QNAN
     }
@@ -40,8 +48,8 @@ impl Value {
         self.value | 1 == Self::TRUE.value
     }
 
-    pub fn is_nil(&self) -> bool {
-        self.value == Self::NIL.value
+    pub fn is_null(&self) -> bool {
+        self.value == Self::NULL.value
     }
 
     pub fn is_undef(&self) -> bool {
@@ -63,8 +71,8 @@ impl fmt::Display for Value {
             self.as_float().to_string()
         } else if self.is_bool() {
             self.as_bool().to_string()
-        } else if self.is_nil() {
-            String::from("nil")
+        } else if self.is_null() {
+            String::from("null")
         } else {
             String::from("undefined")
         };
