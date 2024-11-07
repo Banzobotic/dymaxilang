@@ -1,6 +1,5 @@
 use std::fmt;
 use std::mem;
-use std::ptr::NonNull;
 
 use super::object::Obj;
 use super::object::ObjCommon;
@@ -15,7 +14,7 @@ const TAG_TRUE: u64 = 3;
 
 #[derive(Clone, Copy)]
 pub struct Value {
-    pub value: u64,
+    value: u64,
 }
 
 impl Value {
@@ -85,6 +84,16 @@ impl Value {
     }
 }
 
+impl std::cmp::PartialEq for Value {
+    fn eq(&self, other: &Self) -> bool {
+        if self.is_float() && other.is_float() {
+            self.as_float() == other.as_float()
+        } else {
+            self.value == other.value
+        }
+    }
+}
+
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let str = if self.is_float() {
@@ -93,6 +102,8 @@ impl fmt::Display for Value {
             self.as_bool().to_string()
         } else if self.is_null() {
             String::from("null")
+        } else if self.is_obj() {
+            self.as_obj().to_string()
         } else {
             String::from("undefined")
         };

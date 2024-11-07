@@ -32,9 +32,9 @@ pub enum OpCode {
 pub struct Chunk {
     stack: Vec<u8>,
     ip: NonNull<u8>,
-    constants: Vec<Value>,
-    globals: Vec<Value>,
-    global_names: HashMap<String, u8>,
+    pub constants: Vec<Value>,
+    pub globals: Vec<Value>,
+    pub global_names: HashMap<String, u8>,
 }
 
 impl Chunk {

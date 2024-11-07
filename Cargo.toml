@@ -3,4 +3,9 @@ name = "dymaxilang"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["debug_gc", "clobber_gc"]
+debug_gc = []
+clobber_gc = []
+
 [dependencies]

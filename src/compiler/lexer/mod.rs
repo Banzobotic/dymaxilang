@@ -115,6 +115,7 @@ impl Lexer {
                 self.line += 1;
             }
         }
+        self.advance();
 
         self.make_token(TokenKind::Atom(AtomKind::String))
     }

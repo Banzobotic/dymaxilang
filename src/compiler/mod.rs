@@ -1,8 +1,7 @@
 use lexer::{AtomKind, Lexer, OpKind, Token, TokenKind};
 
 use crate::vm::{
-    chunk::{Chunk, OpCode},
-    value::Value,
+    chunk::OpCode, object::ObjString, value::Value, VM
 };
 
 mod lexer;
@@ -69,25 +68,33 @@ struct Local {
 
 pub struct Compiler {
     parser: Parser,
-    chunk: Chunk,
     locals: Vec<Local>,
     scope_depth: u32,
+    vm: VM,
 }
 
 impl Compiler {
     pub fn new(program: String) -> Self {
         Self {
             parser: Parser::new(program),
-            chunk: Chunk::new(),
             locals: Vec::new(),
             scope_depth: 0,
+            vm: VM::new(),
         }
     }
 
     fn number(&mut self) {
         let token = self.parser.previous();
         let value = self.parser.lexer.get_token_string(&token).parse().unwrap();
-        self.chunk.push_constant(Value::float(value));
+        self.vm.chunk.push_constant(Value::float(value));
+    }
+
+    fn string(&mut self) {
+        let token = self.parser.previous();
+        let value = self.parser.lexer.get_token_string(&token);
+        let obj = ObjString::new(&value[1..value.len() - 1]);
+        let obj = self.vm.alloc(obj);
+        self.vm.chunk.push_constant(Value::obj(obj));
     }
 
     fn resolve_local(&self, name: &str) -> Option<u8> {
@@ -118,7 +125,7 @@ impl Compiler {
                 set_op = OpCode::SetLocal;
             }
             None => {
-                arg = Some(self.chunk.get_global_idx(name));
+                arg = Some(self.vm.chunk.get_global_idx(name));
                 get_op = OpCode::GetGlobal;
                 set_op = OpCode::SetGlobal;
             }
@@ -126,11 +133,11 @@ impl Compiler {
 
         if self.parser.check(TokenKind::Op(OpKind::Equal)) {
             self.expression();
-            self.chunk.push_opcode(set_op);
-            self.chunk.push_byte(arg.unwrap());
+            self.vm.chunk.push_opcode(set_op);
+            self.vm.chunk.push_byte(arg.unwrap());
         } else {
-            self.chunk.push_opcode(get_op);
-            self.chunk.push_byte(arg.unwrap());
+            self.vm.chunk.push_opcode(get_op);
+            self.vm.chunk.push_byte(arg.unwrap());
         }
     }
 
@@ -160,11 +167,11 @@ impl Compiler {
         match self.parser.previous().kind {
             TokenKind::Atom(it) => match it {
                 AtomKind::Number => self.number(),
+                AtomKind::String => self.string(),
                 AtomKind::Ident => self.identifier(),
-                AtomKind::True => self.chunk.push_constant(Value::TRUE),
-                AtomKind::False => self.chunk.push_constant(Value::FALSE),
-                AtomKind::Null => self.chunk.push_constant(Value::NULL),
-                _ => unimplemented!(),
+                AtomKind::True => self.vm.chunk.push_constant(Value::TRUE),
+                AtomKind::False => self.vm.chunk.push_constant(Value::FALSE),
+                AtomKind::Null => self.vm.chunk.push_constant(Value::NULL),
             },
             TokenKind::Op(OpKind::OpenParen) => {
                 self.expression_bp(0);
@@ -175,8 +182,8 @@ impl Compiler {
                 self.expression_bp(r_bp);
 
                 match op {
-                    OpKind::Bang => self.chunk.push_opcode(OpCode::Not),
-                    OpKind::Minus => self.chunk.push_opcode(OpCode::Negate),
+                    OpKind::Bang => self.vm.chunk.push_opcode(OpCode::Not),
+                    OpKind::Minus => self.vm.chunk.push_opcode(OpCode::Negate),
                     _ => unreachable!("Error handled in prefix_bp call"),
                 }
             }
@@ -193,16 +200,16 @@ impl Compiler {
                 self.expression_bp(r_bp);
 
                 match op {
-                    OpKind::Plus => self.chunk.push_opcode(OpCode::Add),
-                    OpKind::Minus => self.chunk.push_opcode(OpCode::Sub),
-                    OpKind::Mul => self.chunk.push_opcode(OpCode::Mul),
-                    OpKind::Div => self.chunk.push_opcode(OpCode::Div),
-                    OpKind::DoubleEqual => self.chunk.push_opcode(OpCode::Equal),
-                    OpKind::BangEqual => self.chunk.push_opcode(OpCode::NotEqual),
-                    OpKind::Greater => self.chunk.push_opcode(OpCode::Greater),
-                    OpKind::GreaterEqual => self.chunk.push_opcode(OpCode::GreaterEqual),
-                    OpKind::Less => self.chunk.push_opcode(OpCode::Less),
-                    OpKind::LessEqual => self.chunk.push_opcode(OpCode::LessEqual),
+                    OpKind::Plus => self.vm.chunk.push_opcode(OpCode::Add),
+                    OpKind::Minus => self.vm.chunk.push_opcode(OpCode::Sub),
+                    OpKind::Mul => self.vm.chunk.push_opcode(OpCode::Mul),
+                    OpKind::Div => self.vm.chunk.push_opcode(OpCode::Div),
+                    OpKind::DoubleEqual => self.vm.chunk.push_opcode(OpCode::Equal),
+                    OpKind::BangEqual => self.vm.chunk.push_opcode(OpCode::NotEqual),
+                    OpKind::Greater => self.vm.chunk.push_opcode(OpCode::Greater),
+                    OpKind::GreaterEqual => self.vm.chunk.push_opcode(OpCode::GreaterEqual),
+                    OpKind::Less => self.vm.chunk.push_opcode(OpCode::Less),
+                    OpKind::LessEqual => self.vm.chunk.push_opcode(OpCode::LessEqual),
                     token => panic!("Unexpected token: {:?}", token),
                 }
 
@@ -220,12 +227,12 @@ impl Compiler {
     fn expression_statement(&mut self) {
         self.expression();
         self.parser.consume(TokenKind::SemiColon);
-        self.chunk.push_opcode(OpCode::Pop);
+        self.vm.chunk.push_opcode(OpCode::Pop);
     }
 
     fn print_statement(&mut self) {
         self.expression();
-        self.chunk.push_opcode(OpCode::Print);
+        self.vm.chunk.push_opcode(OpCode::Print);
         self.parser.consume(TokenKind::SemiColon)
     }
 
@@ -241,7 +248,7 @@ impl Compiler {
                 break;
             }
 
-            self.chunk.push_opcode(OpCode::Pop);
+            self.vm.chunk.push_opcode(OpCode::Pop);
             self.locals.pop();
         }
     }
@@ -295,7 +302,7 @@ impl Compiler {
             return 0;
         }
 
-        self.chunk.get_global_idx(
+        self.vm.chunk.get_global_idx(
             self.parser
                 .previous()
                 .lexeme_str(self.parser.lexer.program()),
@@ -312,8 +319,8 @@ impl Compiler {
             return;
         }
 
-        self.chunk.push_opcode(OpCode::DefineGlobal);
-        self.chunk.push_byte(global_idx);
+        self.vm.chunk.push_opcode(OpCode::DefineGlobal);
+        self.vm.chunk.push_byte(global_idx);
     }
 
     fn var_decl(&mut self) {
@@ -322,7 +329,7 @@ impl Compiler {
         if self.parser.check(TokenKind::Op(OpKind::Equal)) {
             self.expression();
         } else {
-            self.chunk.push_opcode(OpCode::Nil);
+            self.vm.chunk.push_opcode(OpCode::Nil);
         }
 
         self.parser.consume(TokenKind::SemiColon);
@@ -344,13 +351,13 @@ impl Compiler {
         }
     }
 
-    pub fn compile(&mut self) -> Chunk {
+    pub fn compile(mut self) -> VM {
         while !self.parser.compare_next(TokenKind::Eof) {
             self.statement();
         }
 
-        self.chunk.push_opcode(OpCode::Return);
+        self.vm.chunk.push_opcode(OpCode::Return);
 
-        self.chunk.clone()
+        self.vm
     }
 }

@@ -1,9 +1,7 @@
-use std::{
-    fmt::{Debug, Display},
-    ptr::NonNull,
-};
+use std::fmt::{Debug, Display};
 
 #[repr(u8)]
+#[derive(Clone, Copy, Debug)]
 pub enum ObjKind {
     String,
 }
@@ -18,7 +16,18 @@ impl Obj {
         unsafe { self.common.read().kind }
     }
 
+    pub fn size(&self) -> usize {
+        unsafe {
+            match self.kind() {
+                ObjKind::String => (*self.string).value.len() + size_of::<ObjString>(),
+            }
+        }
+    }
+
     pub fn free(self) {
+        #[cfg(feature = "debug_gc")]
+        println!("Free: {:?} {}", self.kind(), self);
+        
         unsafe {
             match self.kind() {
                 ObjKind::String => drop(Box::from_raw(self.string)),
@@ -36,7 +45,7 @@ impl Debug for Obj {
 impl Display for Obj {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.kind() {
-            ObjKind::String => write!(f, "{}", unsafe { self.string.read().value }),
+            ObjKind::String => write!(f, "{}", unsafe { &(*self.string).value }),
         }
     }
 }
@@ -58,6 +67,7 @@ from_obj_impl! {
     string ObjString
 }
 
+#[repr(C)]
 pub struct ObjCommon {
     pub kind: ObjKind,
     pub mark: bool,
@@ -69,6 +79,7 @@ impl ObjCommon {
     }
 }
 
+#[repr(C)]
 pub struct ObjString {
     pub common: ObjCommon,
     pub value: Box<str>,

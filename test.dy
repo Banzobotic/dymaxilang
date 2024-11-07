@@ -1,13 +1,4 @@
-print true == true;
-print false == true;
-print false != true;
-print 10 == 10;
-print 10 != 10;
-print 10 == 20;
-print 10 == 10.1;
-print 10 > 10.1;
-print 10 < 10.1;
-print 10 > 10;
-print 10 >= 10;
-print 10 <= 10;
-print !(10 <= 10);
+print "hello";
+print "test";
+print "blah blah";
+print "hallo again";

@@ -1,4 +1,6 @@
 use chunk::Chunk;
+use gc::{GCAlloc, GC};
+use object::Obj;
 use stack::Stack;
 use value::Value;
 
@@ -9,15 +11,55 @@ pub mod stack;
 pub mod value;
 
 pub struct VM {
-    chunk: Chunk,
+    pub chunk: Chunk,
+    gc: GC,
     stack: Stack,
 }
 
 impl VM {
-    pub fn new(chunk: Chunk) -> Self {
-        let stack = Stack::new();
+    pub fn new() -> Self {
+        VM {
+             chunk: Chunk::new(),
+             gc: GC::new(),
+             stack: Stack::new(),
+        }
+    }
 
-        VM { chunk, stack }
+    pub fn alloc<T>(&mut self, obj: impl GCAlloc<T>) -> Obj {
+        self.run_gc();
+        self.gc.alloc(obj)
+    }
+
+    fn run_gc(&mut self) {
+        if self.gc.should_gc() {
+            #[cfg(feature = "debug_gc")]
+            println!("--- GC START ---");
+
+            self.mark_roots();
+            self.gc.collect();
+
+            #[cfg(feature = "debug_gc")]
+            println!("--- GC END ---");
+            
+        }
+    }
+
+    fn mark_roots(&mut self) {
+        let mut stack_ptr = self.stack.base();
+        while stack_ptr != self.stack.top().as_ptr() {
+            unsafe { 
+                self.gc.mark(*stack_ptr);
+                stack_ptr = stack_ptr.add(1);
+            }
+        }
+
+        for value in self.chunk.constants.iter_mut() {
+            self.gc.mark(*value);
+        }
+
+        for value in self.chunk.globals.iter_mut() {
+            self.gc.mark(*value);
+        }
     }
 
     pub fn run(&mut self) {
@@ -38,8 +80,7 @@ impl VM {
                     let b = self.stack.pop();
                     let a = self.stack.pop();
 
-                    // TODO: fix when objects added
-                    self.stack.push(Value::bool(a.value $op b.value));
+                    self.stack.push(Value::bool(a $op b));
                 }
             }
         }
@@ -134,7 +175,10 @@ impl VM {
                         .write(self.stack.peek(0));
                 },
                 Op::Print => println!("{}", self.stack.pop()),
-                Op::Return => return,
+                Op::Return => {
+                    self.gc.free_everything();
+                    return;
+                },
             }
         }
     }
