@@ -3,6 +3,8 @@ use stack::Stack;
 use value::Value;
 
 pub mod chunk;
+pub mod gc;
+pub mod object;
 pub mod stack;
 pub mod value;
 

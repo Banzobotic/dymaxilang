@@ -1,5 +1,9 @@
 use std::fmt;
 use std::mem;
+use std::ptr::NonNull;
+
+use super::object::Obj;
+use super::object::ObjCommon;
 
 const SIGN_BIT: u64 = 0x8000000000000000;
 const QNAN: u64 = 0x7ffc000000000000;
@@ -40,6 +44,14 @@ impl Value {
         }
     }
 
+    pub fn obj(obj: Obj) -> Self {
+        unsafe {
+            Self {
+                value: SIGN_BIT | QNAN | obj.common as u64,
+            }
+        }
+    }
+
     pub fn is_float(&self) -> bool {
         self.value & QNAN != QNAN
     }
@@ -56,12 +68,20 @@ impl Value {
         self.value == Self::UNDEF.value
     }
 
+    pub fn is_obj(&self) -> bool {
+        self.value & (SIGN_BIT | QNAN) == SIGN_BIT | QNAN
+    }
+
     pub fn as_float(&self) -> f64 {
         f64::from_bits(self.value)
     }
 
     pub fn as_bool(&self) -> bool {
         self.value == Self::TRUE.value
+    }
+
+    pub fn as_obj(&self) -> Obj {
+        ((self.value & !(SIGN_BIT | QNAN)) as *mut ObjCommon).into()
     }
 }
 
