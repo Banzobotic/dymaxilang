@@ -3,6 +3,7 @@ use std::mem;
 
 use super::object::Obj;
 use super::object::ObjCommon;
+use super::object::ObjKind;
 
 const SIGN_BIT: u64 = 0x8000000000000000;
 const QNAN: u64 = 0x7ffc000000000000;
@@ -69,6 +70,10 @@ impl Value {
 
     pub fn is_obj(&self) -> bool {
         self.value & (SIGN_BIT | QNAN) == SIGN_BIT | QNAN
+    }
+
+    pub fn is_string(&self) -> bool {
+        self.is_obj() && matches!(self.as_obj().kind(), ObjKind::String)
     }
 
     pub fn as_float(&self) -> f64 {

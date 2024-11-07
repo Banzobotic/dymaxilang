@@ -1,6 +1,6 @@
 use chunk::Chunk;
 use gc::{GCAlloc, GC};
-use object::Obj;
+use object::{Obj, ObjString};
 use stack::Stack;
 use value::Value;
 
@@ -69,6 +69,10 @@ impl VM {
                     let b = self.stack.pop();
                     let a = self.stack.pop();
 
+                    if !a.is_float() || !b.is_float() {
+                        panic!("Can only do arithmetic operations on floats");
+                    }
+
                     self.stack.push(Value::float(a.as_float() $op b.as_float()));
                 }
             };
@@ -108,7 +112,19 @@ impl VM {
                 Op::Pop => {
                     self.stack.pop();
                 }
-                Op::Add => binary_op!(+),
+                Op::Add => {
+                    let b = self.stack.pop();
+                    let a = self.stack.pop();
+
+                    if a.is_float() && b.is_float() {
+                        self.stack.push(Value::float(a.as_float() + b.as_float()))
+                    } else if a.is_string() && b.is_string() {
+                        let new_str = unsafe { format!("{}{}", (*a.as_obj().string).value, (*b.as_obj().string).value) };
+                        let obj = ObjString::new(&new_str);
+                        let obj = self.alloc(obj);
+                        self.stack.push(Value::obj(obj))
+                    }
+                }
                 Op::Sub => binary_op!(-),
                 Op::Mul => binary_op!(*),
                 Op::Div => binary_op!(/),

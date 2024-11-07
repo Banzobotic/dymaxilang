@@ -1,4 +1,3 @@
-print "hello";
-print "test";
-print "blah blah";
-print "hallo again";
+let a = "hello, ";
+let b = "world!";
+print a + b;
