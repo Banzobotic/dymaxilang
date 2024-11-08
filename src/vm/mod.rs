@@ -19,9 +19,9 @@ pub struct VM {
 impl VM {
     pub fn new() -> Self {
         VM {
-             chunk: Chunk::new(),
-             gc: GC::new(),
-             stack: Stack::new(),
+            chunk: Chunk::new(),
+            gc: GC::new(),
+            stack: Stack::new(),
         }
     }
 
@@ -40,14 +40,13 @@ impl VM {
 
             #[cfg(feature = "debug_gc")]
             println!("--- GC END ---");
-            
         }
     }
 
     fn mark_roots(&mut self) {
         let mut stack_ptr = self.stack.base();
         while stack_ptr != self.stack.top().as_ptr() {
-            unsafe { 
+            unsafe {
                 self.gc.mark(*stack_ptr);
                 stack_ptr = stack_ptr.add(1);
             }
@@ -105,6 +104,18 @@ impl VM {
         }
 
         loop {
+            #[cfg(feature = "trace_execution")]
+            {
+                let mut stack_ptr = self.stack.base();
+                while stack_ptr != self.stack.top().as_ptr() {
+                    print!("[ {} ]", unsafe { *stack_ptr });
+                    stack_ptr = unsafe { stack_ptr.add(1) };
+                }
+                println!();
+                self.chunk
+                    .disassemble_instruction(self.chunk.current_offset());
+            }
+
             use chunk::OpCode as Op;
             match unsafe { self.chunk.next_opcode() } {
                 Op::LoadConstant => self.stack.push(self.chunk.next_constant()),
@@ -119,7 +130,13 @@ impl VM {
                     if a.is_float() && b.is_float() {
                         self.stack.push(Value::float(a.as_float() + b.as_float()))
                     } else if a.is_string() && b.is_string() {
-                        let new_str = unsafe { format!("{}{}", (*a.as_obj().string).value, (*b.as_obj().string).value) };
+                        let new_str = unsafe {
+                            format!(
+                                "{}{}",
+                                (*a.as_obj().string).value,
+                                (*b.as_obj().string).value
+                            )
+                        };
                         let obj = ObjString::new(&new_str);
                         let obj = self.alloc(obj);
                         self.stack.push(Value::obj(obj))
@@ -196,7 +213,7 @@ impl VM {
                 Op::Return => {
                     self.gc.free_everything();
                     return;
-                },
+                }
             }
         }
     }

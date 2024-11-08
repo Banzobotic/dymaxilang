@@ -13,7 +13,7 @@ pub struct GC {
 
 impl GC {
     const HEAP_GROW_FACTOR: usize = 2;
-    
+
     pub fn new() -> Self {
         Self {
             objects: Vec::new(),
@@ -36,7 +36,7 @@ impl GC {
         while let Some(obj) = self.greys.pop() {
             #[cfg(feature = "debug_gc")]
             println!("Blacken: {:?} {obj}", obj.kind());
-            
+
             match unsafe { obj.common.read().kind } {
                 ObjKind::String => (),
             }
@@ -47,9 +47,7 @@ impl GC {
         for i in 0..self.objects.len() {
             if let Some(obj) = self.objects[i].as_mut() {
                 if unsafe { obj.common.read().mark } {
-                    unsafe {
-                        (*obj.common).mark = false
-                    }
+                    unsafe { (*obj.common).mark = false }
                 } else {
                     self.bytes_allocated -= obj.size();
                     self.objects[i].take().unwrap().free()
@@ -66,7 +64,7 @@ impl GC {
     }
 
     pub fn should_gc(&self) -> bool {
-        self.bytes_allocated > self.next_gc || cfg!(feature = "clobber_gc")   
+        self.bytes_allocated > self.next_gc || cfg!(feature = "clobber_gc")
     }
 
     pub fn free_everything(&mut self) {
@@ -120,7 +118,7 @@ impl<T: Into<Obj>> GCMark for T {
 
         #[cfg(feature = "debug_gc")]
         println!("Mark: {:?} {obj}", obj.kind());
-        
+
         if unsafe { !obj.common.read().mark } {
             unsafe { (*obj.common).mark = true };
             gc.greys.push(obj);

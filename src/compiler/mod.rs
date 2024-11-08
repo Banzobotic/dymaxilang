@@ -1,8 +1,6 @@
 use lexer::{AtomKind, Lexer, OpKind, Token, TokenKind};
 
-use crate::vm::{
-    chunk::OpCode, object::ObjString, value::Value, VM
-};
+use crate::vm::{chunk::OpCode, object::ObjString, value::Value, VM};
 
 mod lexer;
 
@@ -16,7 +14,6 @@ impl Parser {
     pub fn new(program: String) -> Self {
         let mut lexer = Lexer::new(program);
         let current = lexer.next_token();
-        println!("Token: {:?}", current.kind);
         Parser {
             lexer,
             previous: None,
@@ -37,7 +34,6 @@ impl Parser {
         self.previous = Some(self.current);
 
         self.current = self.lexer.next_token();
-        println!("Token: {:?}", self.current.kind);
     }
 
     pub fn consume(&mut self, kind: TokenKind) {
@@ -357,6 +353,9 @@ impl Compiler {
         }
 
         self.vm.chunk.push_opcode(OpCode::Return);
+
+        #[cfg(feature = "decompile")]
+        self.vm.chunk.disassemble();
 
         self.vm
     }

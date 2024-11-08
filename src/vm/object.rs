@@ -1,4 +1,7 @@
-use std::{fmt::{Debug, Display}, ptr};
+use std::{
+    fmt::{Debug, Display},
+    ptr,
+};
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -27,7 +30,7 @@ impl Obj {
     pub fn free(self) {
         #[cfg(feature = "debug_gc")]
         println!("Free: {:?} {}", self.kind(), self);
-        
+
         unsafe {
             match self.kind() {
                 ObjKind::String => drop(Box::from_raw(self.string)),
@@ -53,13 +56,9 @@ impl Display for Obj {
 impl PartialEq for Obj {
     fn eq(&self, other: &Self) -> bool {
         if self.kind() == ObjKind::String && other.kind() == ObjKind::String {
-            unsafe {
-                (*self.string).value == (*other.string).value
-            }
+            unsafe { (*self.string).value == (*other.string).value }
         } else {
-            unsafe {
-                ptr::eq(self.common, other.common)
-            }
+            unsafe { ptr::eq(self.common, other.common) }
         }
     }
 }

@@ -1,6 +1,7 @@
 let a = "hello";
 let b = "hello";
 let c = "world";
+let d = c;
 print a == b;
 print a == c;
 print a == a;

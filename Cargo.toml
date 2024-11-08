@@ -4,8 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["debug_gc", "clobber_gc"]
+default = ["debug_gc", "clobber_gc", "decompile", "trace_execution"]
 debug_gc = []
 clobber_gc = []
+decompile = []
+trace_execution = []
 
 [dependencies]

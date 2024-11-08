@@ -3,6 +3,7 @@ use std::{collections::HashMap, ptr::NonNull};
 use super::value::Value;
 
 #[repr(u8)]
+#[derive(Debug)]
 pub enum OpCode {
     LoadConstant,
     Nil,
@@ -30,7 +31,7 @@ pub enum OpCode {
 
 #[derive(Clone, Debug)]
 pub struct Chunk {
-    stack: Vec<u8>,
+    code: Vec<u8>,
     ip: NonNull<u8>,
     pub constants: Vec<Value>,
     pub globals: Vec<Value>,
@@ -39,12 +40,12 @@ pub struct Chunk {
 
 impl Chunk {
     pub fn new() -> Self {
-        let mut stack = Vec::with_capacity(8);
+        let mut code = Vec::with_capacity(8);
         // SAFETY: stack is already initialised so pointer to it is non-null
-        let ip = unsafe { NonNull::new_unchecked(stack.as_mut_ptr()) };
+        let ip = unsafe { NonNull::new_unchecked(code.as_mut_ptr()) };
 
         Self {
-            stack,
+            code,
             ip,
             constants: Vec::new(),
             globals: Vec::new(),
@@ -68,14 +69,14 @@ impl Chunk {
     }
 
     pub fn push_byte(&mut self, byte: u8) {
-        let at_capacity = self.stack.len() == self.stack.capacity();
+        let at_capacity = self.code.len() == self.code.capacity();
 
-        self.stack.push(byte);
+        self.code.push(byte);
 
         // if vector has been grown then it may be at a different location in memory
         if at_capacity {
             // SAFETY: stack is initialised so pointer to it is non-null
-            self.ip = unsafe { NonNull::new_unchecked(self.stack.as_mut_ptr()) }
+            self.ip = unsafe { NonNull::new_unchecked(self.code.as_mut_ptr()) }
         }
     }
 
@@ -116,5 +117,53 @@ impl Chunk {
 
     pub fn set_global(&mut self, idx: u8, value: Value) {
         self.globals[idx as usize] = value;
+    }
+
+    pub fn current_offset(&self) -> usize {
+        unsafe { self.ip.sub(self.code.as_ptr() as usize).as_ptr() as usize }
+    }
+
+    pub fn disassemble_instruction(&self, offset: usize) -> usize {
+        print!("{:04X} ", offset);
+
+        use OpCode as Op;
+        match unsafe { std::mem::transmute::<u8, OpCode>(self.code[offset]) } {
+            op @ (Op::Nil
+            | Op::Pop
+            | Op::Add
+            | Op::Sub
+            | Op::Mul
+            | Op::Div
+            | Op::Equal
+            | Op::NotEqual
+            | Op::Greater
+            | Op::GreaterEqual
+            | Op::Less
+            | Op::LessEqual
+            | Op::Not
+            | Op::Negate
+            | Op::Print
+            | Op::Return) => {
+                println!("{:?}", op);
+                offset + 1
+            }
+            op @ (Op::LoadConstant
+            | Op::DefineGlobal
+            | Op::GetGlobal
+            | Op::SetGlobal
+            | Op::GetLocal
+            | Op::SetLocal) => {
+                let constant = self.code[offset + 1];
+                println!("{:16} {:04X}", format!("{:?}", op), constant);
+                offset + 2
+            }
+        }
+    }
+
+    pub fn disassemble(&self) {
+        let mut offset = 0;
+        while offset < self.code.len() {
+            offset = self.disassemble_instruction(offset);
+        }
     }
 }
