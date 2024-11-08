@@ -1,7 +1,7 @@
-use std::fmt::{Debug, Display};
+use std::{fmt::{Debug, Display}, ptr};
 
 #[repr(u8)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ObjKind {
     String,
 }
@@ -46,6 +46,20 @@ impl Display for Obj {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.kind() {
             ObjKind::String => write!(f, "{}", unsafe { &(*self.string).value }),
+        }
+    }
+}
+
+impl PartialEq for Obj {
+    fn eq(&self, other: &Self) -> bool {
+        if self.kind() == ObjKind::String && other.kind() == ObjKind::String {
+            unsafe {
+                (*self.string).value == (*other.string).value
+            }
+        } else {
+            unsafe {
+                ptr::eq(self.common, other.common)
+            }
         }
     }
 }

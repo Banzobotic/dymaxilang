@@ -93,6 +93,8 @@ impl std::cmp::PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         if self.is_float() && other.is_float() {
             self.as_float() == other.as_float()
+        } else if self.is_obj() && other.is_obj() {
+            self.as_obj() == other.as_obj()
         } else {
             self.value == other.value
         }

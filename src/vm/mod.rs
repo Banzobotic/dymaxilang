@@ -123,6 +123,8 @@ impl VM {
                         let obj = ObjString::new(&new_str);
                         let obj = self.alloc(obj);
                         self.stack.push(Value::obj(obj))
+                    } else {
+                        panic!("Can only add strings and floats");
                     }
                 }
                 Op::Sub => binary_op!(-),
