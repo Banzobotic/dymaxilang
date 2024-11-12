@@ -79,6 +79,15 @@ impl Compiler {
         }
     }
 
+    fn integer(&mut self) {
+        let token = self.parser.previous();
+        let value: f64 = self.parser.lexer.get_token_string(&token).parse().unwrap();
+        if value != value.round() {
+            panic!("Number must be an integer");
+        }
+        self.vm.chunk.push_constant(Value::float(value))
+    }
+
     fn number(&mut self) {
         let token = self.parser.previous();
         let value = self.parser.lexer.get_token_string(&token).parse().unwrap();
@@ -333,8 +342,74 @@ impl Compiler {
         self.define_variable(global_idx);
     }
 
+    fn for_loop(&mut self) {
+        self.begin_scope();
+        self.parser.consume(TokenKind::Atom(AtomKind::Ident));
+        self.declare_variable();
+        
+        self.parser.consume(TokenKind::In);
+        self.parser.consume(TokenKind::Atom(AtomKind::Number));
+        self.integer();
+        self.mark_initialised();
+
+        let start = self.vm.chunk.jump_target();
+
+        let var_idx = (self.locals.len() - 1) as u8;
+        self.vm.chunk.push_opcode(OpCode::GetLocal);
+        self.vm.chunk.push_byte(var_idx);
+
+        let op;
+        if self.parser.check(TokenKind::Op(OpKind::Greater)) {
+            op = OpCode::Less;
+        } else if self.parser.check(TokenKind::Op(OpKind::GreaterEqual)) {
+            op = OpCode::LessEqual;
+        } else {
+            panic!("Must use either '>' or '>=' in for loop");
+        }
+        
+        self.parser.consume(TokenKind::Atom(AtomKind::Number));
+        self.integer();
+        self.vm.chunk.push_opcode(op);
+        let jump = self.vm.chunk.push_jump(OpCode::JumpIfFalse);
+
+        self.parser.consume(TokenKind::OpenBrace);
+        self.block();
+
+        self.vm.chunk.push_opcode(OpCode::GetLocal);
+        self.vm.chunk.push_byte(var_idx);
+        self.vm.chunk.push_constant(Value::float(1.0));
+        self.vm.chunk.push_opcode(OpCode::Add);
+        self.vm.chunk.push_opcode(OpCode::SetLocal);
+        self.vm.chunk.push_byte(var_idx);
+        self.vm.chunk.push_opcode(OpCode::Pop);
+
+        self.vm.chunk.push_loop(start);
+        self.vm.chunk.patch_jump(jump);
+        self.end_scope();
+    }
+
+    fn while_loop(&mut self) {
+        let start = self.vm.chunk.jump_target();
+        self.expression();
+
+        let jump = self.vm.chunk.push_jump(OpCode::JumpIfFalse);
+
+        self.parser.consume(TokenKind::OpenBrace);
+        self.begin_scope();
+        self.block();
+        self.end_scope();
+
+        self.vm.chunk.push_loop(start);
+
+        self.vm.chunk.patch_jump(jump);
+    }
+
     fn statement(&mut self) {
-        if self.parser.check(TokenKind::Let) {
+        if self.parser.check(TokenKind::While) {
+            self.while_loop();
+        } else if self.parser.check(TokenKind::For) {
+            self.for_loop();
+        } else if self.parser.check(TokenKind::Let) {
             self.var_decl();
         } else if self.parser.check(TokenKind::Print) {
             self.print_statement();

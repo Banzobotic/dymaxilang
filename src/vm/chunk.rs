@@ -27,6 +27,8 @@ pub enum OpCode {
     SetLocal,
     Print,
     Return,
+    Jump,
+    JumpIfFalse,
 }
 
 #[derive(Clone, Debug)]
@@ -64,6 +66,27 @@ impl Chunk {
         self.push_byte(idx);
     }
 
+    pub fn push_jump(&mut self, opcode: OpCode) -> usize {
+        self.push_opcode(opcode);
+        self.push_byte(0xFF);
+        self.jump_target() - 1
+    }
+
+    pub fn push_loop(&mut self, target: usize) {
+        let offset = (target as isize - self.code.len() as isize - 2) as u8;
+        self.push_opcode(OpCode::Jump);
+        self.push_byte(offset);
+    }
+
+    pub fn patch_jump(&mut self, jump_idx: usize) {
+        let offset = (self.code.len() as isize - jump_idx as isize - 1) as u8;
+        self.code[jump_idx] = offset;
+    }
+
+    pub fn jump_target(&self) -> usize {
+        self.code.len()
+    }
+
     pub fn push_opcode(&mut self, opcode: OpCode) {
         self.push_byte(opcode as u8);
     }
@@ -99,6 +122,10 @@ impl Chunk {
         byte
     }
 
+    pub fn jump(&mut self, offset: u8) {
+        self.ip = unsafe { self.ip.offset(offset as i8 as isize) }
+    }
+
     pub fn get_global_idx(&mut self, name: &str) -> u8 {
         match self.global_names.get(name) {
             Some(idx) => *idx,
@@ -119,10 +146,12 @@ impl Chunk {
         self.globals[idx as usize] = value;
     }
 
+    #[cfg(any(feature = "decompile", feature = "trace_execution"))]
     pub fn current_offset(&self) -> usize {
         unsafe { self.ip.sub(self.code.as_ptr() as usize).as_ptr() as usize }
     }
 
+    #[cfg(any(feature = "decompile", feature = "trace_execution"))]
     pub fn disassemble_instruction(&self, offset: usize) -> usize {
         print!("{:04X} ", offset);
 
@@ -152,7 +181,9 @@ impl Chunk {
             | Op::GetGlobal
             | Op::SetGlobal
             | Op::GetLocal
-            | Op::SetLocal) => {
+            | Op::SetLocal
+            | Op::Jump
+            | Op::JumpIfFalse) => {
                 let constant = self.code[offset + 1];
                 println!("{:16} {:04X}", format!("{:?}", op), constant);
                 offset + 2
@@ -160,6 +191,7 @@ impl Chunk {
         }
     }
 
+    #[cfg(feature = "decompile")]
     pub fn disassemble(&self) {
         let mut offset = 0;
         while offset < self.code.len() {

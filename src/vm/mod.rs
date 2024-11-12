@@ -210,6 +210,18 @@ impl VM {
                         .write(self.stack.peek(0));
                 },
                 Op::Print => println!("{}", self.stack.pop()),
+                Op::Jump => {
+                    let offset = self.chunk.next_byte();
+
+                    self.chunk.jump(offset);
+                }
+                Op::JumpIfFalse => {
+                    let offset = self.chunk.next_byte();
+
+                    if !self.stack.pop().as_bool() {
+                        self.chunk.jump(offset);
+                    }
+                }
                 Op::Return => {
                     self.gc.free_everything();
                     return;

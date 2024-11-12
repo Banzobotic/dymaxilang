@@ -1,9 +1,9 @@
-let a = "hello";
-let b = "hello";
-let c = "world";
-let d = c;
-print a == b;
-print a == c;
-print a == a;
-print a != a;
-print a != c;
+let a = 10;
+
+while (a = a - 1) > 0 {
+	print a;
+}
+
+for i in 1>=10 {
+	print i * i;
+}

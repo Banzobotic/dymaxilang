@@ -10,7 +10,7 @@ statement  = varDecl
 
 varDecl    = "var" IDENTIFIER ( "=" expression )? ";"
 fnDecl     = "fn" "(" parameters? ")" block
-forStmt    = "for" IDENTIFIER "in" INTEGER ".." INTEGER block
+forStmt    = "for" IDENTIFIER "in" INTEGER (">" | ">=") INTEGER block
 whlieStmt  = "while" expression block
 exprStmt   = expression ";"
 returnStmt = "return" expression ";"

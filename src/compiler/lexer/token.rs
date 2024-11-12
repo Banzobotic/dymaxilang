@@ -7,6 +7,7 @@ pub enum TokenKind {
     CloseBrace,
     Fn,
     For,
+    In,
     Let,
     Print,
     Return,

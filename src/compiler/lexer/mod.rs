@@ -77,6 +77,7 @@ impl Lexer {
                 'o' => check_keyword(2, "r", TokenKind::For),
                 _ => TokenKind::Atom(AtomKind::Ident),
             },
+            'i' => check_keyword(1, "n", TokenKind::In),
             'l' => check_keyword(1, "et", TokenKind::Let),
             'n' => check_keyword(1, "ull", TokenKind::Atom(AtomKind::Null)),
             'p' => check_keyword(1, "rint", TokenKind::Print),
