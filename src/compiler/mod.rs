@@ -157,6 +157,8 @@ impl Compiler {
 
         fn infix_bp(op: OpKind) -> Option<(u8, u8)> {
             let ret = match op {
+                OpKind::Or => (3, 4),
+                OpKind::And => (5, 6),
                 OpKind::DoubleEqual | OpKind::BangEqual => (7, 8),
                 OpKind::Greater | OpKind::GreaterEqual | OpKind::Less | OpKind::LessEqual => {
                     (9, 10)
@@ -201,6 +203,20 @@ impl Compiler {
                     break;
                 }
                 self.parser.advance();
+
+                if op == OpKind::And {
+                    let jump = self.vm.chunk.push_jump(OpCode::JumpIfFalseNoPop);
+                    self.vm.chunk.push_opcode(OpCode::Pop);
+                    self.expression_bp(r_bp);
+                    self.vm.chunk.patch_jump(jump);
+                    continue;
+                } else if op == OpKind::Or {
+                    let jump = self.vm.chunk.push_jump(OpCode::JumpIfTrueNoPop);
+                    self.vm.chunk.push_opcode(OpCode::Pop);
+                    self.expression_bp(r_bp);
+                    self.vm.chunk.patch_jump(jump);
+                    continue;
+                }
 
                 self.expression_bp(r_bp);
 
@@ -346,7 +362,7 @@ impl Compiler {
         self.begin_scope();
         self.parser.consume(TokenKind::Atom(AtomKind::Ident));
         self.declare_variable();
-        
+
         self.parser.consume(TokenKind::In);
         self.parser.consume(TokenKind::Atom(AtomKind::Number));
         self.integer();
@@ -366,7 +382,7 @@ impl Compiler {
         } else {
             panic!("Must use either '>' or '>=' in for loop");
         }
-        
+
         self.parser.consume(TokenKind::Atom(AtomKind::Number));
         self.integer();
         self.vm.chunk.push_opcode(op);

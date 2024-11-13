@@ -165,6 +165,20 @@ impl Lexer {
                         return self.make_token(TokenKind::Op(OpKind::Less));
                     }
                 }
+                '&' => {
+                    if self.advance() != '&' {
+                        panic!("Use '&&' not '&'");
+                    }
+
+                    return self.make_token(TokenKind::Op(OpKind::And));
+                }
+                '|' => {
+                    if self.advance() != '|' {
+                        panic!("Use '||' not '|'");
+                    }
+
+                    return self.make_token(TokenKind::Op(OpKind::Or));
+                }
                 '(' => return self.make_token(TokenKind::Op(OpKind::OpenParen)),
                 ')' => return self.make_token(TokenKind::Op(OpKind::CloseParen)),
                 '{' => return self.make_token(TokenKind::OpenBrace),

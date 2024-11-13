@@ -29,6 +29,8 @@ pub enum OpKind {
     LessEqual,
     Greater,
     Less,
+    And,
+    Or,
     OpenParen,
     CloseParen,
 }

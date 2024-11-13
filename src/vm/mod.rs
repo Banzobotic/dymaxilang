@@ -222,6 +222,20 @@ impl VM {
                         self.chunk.jump(offset);
                     }
                 }
+                Op::JumpIfFalseNoPop => {
+                    let offset = self.chunk.next_byte();
+
+                    if !self.stack.peek(0).as_bool() {
+                        self.chunk.jump(offset);
+                    }
+                }
+                Op::JumpIfTrueNoPop => {
+                    let offset = self.chunk.next_byte();
+
+                    if self.stack.peek(0).as_bool() {
+                        self.chunk.jump(offset);
+                    }
+                }
                 Op::Return => {
                     self.gc.free_everything();
                     return;

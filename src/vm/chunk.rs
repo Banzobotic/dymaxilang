@@ -29,6 +29,8 @@ pub enum OpCode {
     Return,
     Jump,
     JumpIfFalse,
+    JumpIfFalseNoPop,
+    JumpIfTrueNoPop,
 }
 
 #[derive(Clone, Debug)]
@@ -183,7 +185,9 @@ impl Chunk {
             | Op::GetLocal
             | Op::SetLocal
             | Op::Jump
-            | Op::JumpIfFalse) => {
+            | Op::JumpIfFalse
+            | Op::JumpIfFalseNoPop
+            | Op::JumpIfTrueNoPop) => {
                 let constant = self.code[offset + 1];
                 println!("{:16} {:04X}", format!("{:?}", op), constant);
                 offset + 2
