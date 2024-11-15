@@ -1,6 +1,6 @@
 use lexer::{AtomKind, Lexer, OpKind, Token, TokenKind};
 
-use crate::vm::{chunk::OpCode, object::ObjString, value::Value, VM};
+use crate::vm::{chunk::{Chunk, OpCode}, object::{ObjFunction, ObjString}, value::Value, VM};
 
 mod lexer;
 
@@ -62,21 +62,53 @@ struct Local {
     depth: Option<u32>,
 }
 
-pub struct Compiler {
-    parser: Parser,
+struct CompilingFunction {
+    function: ObjFunction,
     locals: Vec<Local>,
     scope_depth: u32,
+    is_function: bool,
+}
+
+impl CompilingFunction {
+    pub fn new(is_function: bool) -> Self {
+        Self {
+            function: ObjFunction::new(),
+            locals: Vec::new(),
+            scope_depth: 0,
+            is_function,
+        }
+    }
+}
+
+pub struct Compiler {
     vm: VM,
+    parser: Parser,
+    function_stack: Vec<CompilingFunction>,
 }
 
 impl Compiler {
     pub fn new(program: String) -> Self {
         Self {
-            parser: Parser::new(program),
-            locals: Vec::new(),
-            scope_depth: 0,
             vm: VM::new(),
+            parser: Parser::new(program),
+            function_stack: vec![CompilingFunction::new(false)],
         }
+    }
+
+    fn locals(&self) -> &Vec<Local> {
+        &self.function_stack.last().unwrap().locals
+    }
+
+    fn locals_mut(&mut self) -> &mut Vec<Local> {
+        &mut self.function_stack.last_mut().unwrap().locals
+    }
+
+    fn scope_depth(&self) -> u32 {
+        self.function_stack.last().unwrap().scope_depth
+    }
+
+    fn chunk_mut(&mut self) -> &mut Chunk {
+        &mut self.function_stack.last_mut().unwrap().function.chunk
     }
 
     fn integer(&mut self) {
@@ -85,13 +117,13 @@ impl Compiler {
         if value != value.round() {
             panic!("Number must be an integer");
         }
-        self.vm.chunk.push_constant(Value::float(value))
+        self.chunk_mut().push_constant(Value::float(value))
     }
 
     fn number(&mut self) {
         let token = self.parser.previous();
         let value = self.parser.lexer.get_token_string(&token).parse().unwrap();
-        self.vm.chunk.push_constant(Value::float(value));
+        self.chunk_mut().push_constant(Value::float(value));
     }
 
     fn string(&mut self) {
@@ -99,11 +131,11 @@ impl Compiler {
         let value = self.parser.lexer.get_token_string(&token);
         let obj = ObjString::new(&value[1..value.len() - 1]);
         let obj = self.vm.alloc(obj);
-        self.vm.chunk.push_constant(Value::obj(obj));
+        self.chunk_mut().push_constant(Value::obj(obj));
     }
 
     fn resolve_local(&self, name: &str) -> Option<u8> {
-        for (i, local) in self.locals.iter().enumerate().rev() {
+        for (i, local) in self.locals().iter().enumerate().rev() {
             if name == local.name {
                 if local.depth.is_none() {
                     panic!("Can't reference local in its own initialiser");
@@ -130,7 +162,7 @@ impl Compiler {
                 set_op = OpCode::SetLocal;
             }
             None => {
-                arg = Some(self.vm.chunk.get_global_idx(name));
+                arg = Some(self.vm.globals.get_global_idx(name));
                 get_op = OpCode::GetGlobal;
                 set_op = OpCode::SetGlobal;
             }
@@ -138,11 +170,11 @@ impl Compiler {
 
         if self.parser.check(TokenKind::Op(OpKind::Equal)) {
             self.expression();
-            self.vm.chunk.push_opcode(set_op);
-            self.vm.chunk.push_byte(arg.unwrap());
+            self.chunk_mut().push_opcode(set_op);
+            self.chunk_mut().push_byte(arg.unwrap());
         } else {
-            self.vm.chunk.push_opcode(get_op);
-            self.vm.chunk.push_byte(arg.unwrap());
+            self.chunk_mut().push_opcode(get_op);
+            self.chunk_mut().push_byte(arg.unwrap());
         }
     }
 
@@ -176,9 +208,9 @@ impl Compiler {
                 AtomKind::Number => self.number(),
                 AtomKind::String => self.string(),
                 AtomKind::Ident => self.identifier(),
-                AtomKind::True => self.vm.chunk.push_constant(Value::TRUE),
-                AtomKind::False => self.vm.chunk.push_constant(Value::FALSE),
-                AtomKind::Null => self.vm.chunk.push_constant(Value::NULL),
+                AtomKind::True => self.chunk_mut().push_constant(Value::TRUE),
+                AtomKind::False => self.chunk_mut().push_constant(Value::FALSE),
+                AtomKind::Null => self.chunk_mut().push_constant(Value::NULL),
             },
             TokenKind::Op(OpKind::OpenParen) => {
                 self.expression_bp(0);
@@ -189,8 +221,8 @@ impl Compiler {
                 self.expression_bp(r_bp);
 
                 match op {
-                    OpKind::Bang => self.vm.chunk.push_opcode(OpCode::Not),
-                    OpKind::Minus => self.vm.chunk.push_opcode(OpCode::Negate),
+                    OpKind::Bang => self.chunk_mut().push_opcode(OpCode::Not),
+                    OpKind::Minus => self.chunk_mut().push_opcode(OpCode::Negate),
                     _ => unreachable!("Error handled in prefix_bp call"),
                 }
             }
@@ -205,32 +237,32 @@ impl Compiler {
                 self.parser.advance();
 
                 if op == OpKind::And {
-                    let jump = self.vm.chunk.push_jump(OpCode::JumpIfFalseNoPop);
-                    self.vm.chunk.push_opcode(OpCode::Pop);
+                    let jump = self.chunk_mut().push_jump(OpCode::JumpIfFalseNoPop);
+                    self.chunk_mut().push_opcode(OpCode::Pop);
                     self.expression_bp(r_bp);
-                    self.vm.chunk.patch_jump(jump);
+                    self.chunk_mut().patch_jump(jump);
                     continue;
                 } else if op == OpKind::Or {
-                    let jump = self.vm.chunk.push_jump(OpCode::JumpIfTrueNoPop);
-                    self.vm.chunk.push_opcode(OpCode::Pop);
+                    let jump = self.chunk_mut().push_jump(OpCode::JumpIfTrueNoPop);
+                    self.chunk_mut().push_opcode(OpCode::Pop);
                     self.expression_bp(r_bp);
-                    self.vm.chunk.patch_jump(jump);
+                    self.chunk_mut().patch_jump(jump);
                     continue;
                 }
 
                 self.expression_bp(r_bp);
 
                 match op {
-                    OpKind::Plus => self.vm.chunk.push_opcode(OpCode::Add),
-                    OpKind::Minus => self.vm.chunk.push_opcode(OpCode::Sub),
-                    OpKind::Mul => self.vm.chunk.push_opcode(OpCode::Mul),
-                    OpKind::Div => self.vm.chunk.push_opcode(OpCode::Div),
-                    OpKind::DoubleEqual => self.vm.chunk.push_opcode(OpCode::Equal),
-                    OpKind::BangEqual => self.vm.chunk.push_opcode(OpCode::NotEqual),
-                    OpKind::Greater => self.vm.chunk.push_opcode(OpCode::Greater),
-                    OpKind::GreaterEqual => self.vm.chunk.push_opcode(OpCode::GreaterEqual),
-                    OpKind::Less => self.vm.chunk.push_opcode(OpCode::Less),
-                    OpKind::LessEqual => self.vm.chunk.push_opcode(OpCode::LessEqual),
+                    OpKind::Plus => self.chunk_mut().push_opcode(OpCode::Add),
+                    OpKind::Minus => self.chunk_mut().push_opcode(OpCode::Sub),
+                    OpKind::Mul => self.chunk_mut().push_opcode(OpCode::Mul),
+                    OpKind::Div => self.chunk_mut().push_opcode(OpCode::Div),
+                    OpKind::DoubleEqual => self.chunk_mut().push_opcode(OpCode::Equal),
+                    OpKind::BangEqual => self.chunk_mut().push_opcode(OpCode::NotEqual),
+                    OpKind::Greater => self.chunk_mut().push_opcode(OpCode::Greater),
+                    OpKind::GreaterEqual => self.chunk_mut().push_opcode(OpCode::GreaterEqual),
+                    OpKind::Less => self.chunk_mut().push_opcode(OpCode::Less),
+                    OpKind::LessEqual => self.chunk_mut().push_opcode(OpCode::LessEqual),
                     token => panic!("Unexpected token: {:?}", token),
                 }
 
@@ -248,29 +280,29 @@ impl Compiler {
     fn expression_statement(&mut self) {
         self.expression();
         self.parser.consume(TokenKind::SemiColon);
-        self.vm.chunk.push_opcode(OpCode::Pop);
+        self.chunk_mut().push_opcode(OpCode::Pop);
     }
 
     fn print_statement(&mut self) {
         self.expression();
-        self.vm.chunk.push_opcode(OpCode::Print);
+        self.chunk_mut().push_opcode(OpCode::Print);
         self.parser.consume(TokenKind::SemiColon)
     }
 
     fn begin_scope(&mut self) {
-        self.scope_depth += 1;
+        self.function_stack.last_mut().unwrap().scope_depth += 1;
     }
 
     fn end_scope(&mut self) {
-        self.scope_depth -= 1;
+        self.function_stack.last_mut().unwrap().scope_depth += 1;
 
-        while let Some(local) = self.locals.last() {
-            if local.depth.unwrap() <= self.scope_depth {
+        while let Some(local) = self.locals().last() {
+            if local.depth.unwrap() <= self.scope_depth() {
                 break;
             }
 
-            self.vm.chunk.push_opcode(OpCode::Pop);
-            self.locals.pop();
+            self.chunk_mut().push_opcode(OpCode::Pop);
+            self.locals_mut().pop();
         }
     }
 
@@ -285,15 +317,15 @@ impl Compiler {
     }
 
     fn add_local(&mut self, name: String) {
-        if self.locals.len() == 256 {
+        if self.locals().len() == 256 {
             panic!("Too many local variables");
         }
 
-        self.locals.push(Local { name, depth: None });
+        self.locals_mut().push(Local { name, depth: None });
     }
 
     fn declare_variable(&mut self) {
-        if self.scope_depth == 0 {
+        if self.scope_depth() == 0 {
             return;
         }
 
@@ -302,8 +334,8 @@ impl Compiler {
             .previous()
             .lexeme_str(self.parser.lexer.program());
 
-        for local in self.locals.iter().rev() {
-            if local.depth.unwrap() < self.scope_depth {
+        for local in self.locals().iter().rev() {
+            if local.depth.unwrap() < self.scope_depth() {
                 break;
             }
 
@@ -319,11 +351,11 @@ impl Compiler {
         self.parser.consume(TokenKind::Atom(AtomKind::Ident));
 
         self.declare_variable();
-        if self.scope_depth > 0 {
+        if self.scope_depth() > 0 {
             return 0;
         }
 
-        self.vm.chunk.get_global_idx(
+        self.vm.globals.get_global_idx(
             self.parser
                 .previous()
                 .lexeme_str(self.parser.lexer.program()),
@@ -331,17 +363,17 @@ impl Compiler {
     }
 
     fn mark_initialised(&mut self) {
-        self.locals.last_mut().unwrap().depth = Some(self.scope_depth);
+        self.locals_mut().last_mut().unwrap().depth = Some(self.scope_depth());
     }
 
     fn define_variable(&mut self, global_idx: u8) {
-        if self.scope_depth > 0 {
+        if self.scope_depth() > 0 {
             self.mark_initialised();
             return;
         }
 
-        self.vm.chunk.push_opcode(OpCode::DefineGlobal);
-        self.vm.chunk.push_byte(global_idx);
+        self.chunk_mut().push_opcode(OpCode::DefineGlobal);
+        self.chunk_mut().push_byte(global_idx);
     }
 
     fn var_decl(&mut self) {
@@ -350,7 +382,7 @@ impl Compiler {
         if self.parser.check(TokenKind::Op(OpKind::Equal)) {
             self.expression();
         } else {
-            self.vm.chunk.push_opcode(OpCode::Nil);
+            self.chunk_mut().push_opcode(OpCode::Nil);
         }
 
         self.parser.consume(TokenKind::SemiColon);
@@ -368,11 +400,11 @@ impl Compiler {
         self.integer();
         self.mark_initialised();
 
-        let start = self.vm.chunk.jump_target();
+        let start = self.chunk_mut().jump_target();
 
-        let var_idx = (self.locals.len() - 1) as u8;
-        self.vm.chunk.push_opcode(OpCode::GetLocal);
-        self.vm.chunk.push_byte(var_idx);
+        let var_idx = (self.locals().len() - 1) as u8;
+        self.chunk_mut().push_opcode(OpCode::GetLocal);
+        self.chunk_mut().push_byte(var_idx);
 
         let op;
         if self.parser.check(TokenKind::Op(OpKind::Greater)) {
@@ -385,39 +417,39 @@ impl Compiler {
 
         self.parser.consume(TokenKind::Atom(AtomKind::Number));
         self.integer();
-        self.vm.chunk.push_opcode(op);
-        let jump = self.vm.chunk.push_jump(OpCode::JumpIfFalse);
+        self.chunk_mut().push_opcode(op);
+        let jump = self.chunk_mut().push_jump(OpCode::JumpIfFalse);
 
         self.parser.consume(TokenKind::OpenBrace);
         self.block();
 
-        self.vm.chunk.push_opcode(OpCode::GetLocal);
-        self.vm.chunk.push_byte(var_idx);
-        self.vm.chunk.push_constant(Value::float(1.0));
-        self.vm.chunk.push_opcode(OpCode::Add);
-        self.vm.chunk.push_opcode(OpCode::SetLocal);
-        self.vm.chunk.push_byte(var_idx);
-        self.vm.chunk.push_opcode(OpCode::Pop);
+        self.chunk_mut().push_opcode(OpCode::GetLocal);
+        self.chunk_mut().push_byte(var_idx);
+        self.chunk_mut().push_constant(Value::float(1.0));
+        self.chunk_mut().push_opcode(OpCode::Add);
+        self.chunk_mut().push_opcode(OpCode::SetLocal);
+        self.chunk_mut().push_byte(var_idx);
+        self.chunk_mut().push_opcode(OpCode::Pop);
 
-        self.vm.chunk.push_loop(start);
-        self.vm.chunk.patch_jump(jump);
+        self.chunk_mut().push_loop(start);
+        self.chunk_mut().patch_jump(jump);
         self.end_scope();
     }
 
     fn while_loop(&mut self) {
-        let start = self.vm.chunk.jump_target();
+        let start = self.chunk_mut().jump_target();
         self.expression();
 
-        let jump = self.vm.chunk.push_jump(OpCode::JumpIfFalse);
+        let jump = self.chunk_mut().push_jump(OpCode::JumpIfFalse);
 
         self.parser.consume(TokenKind::OpenBrace);
         self.begin_scope();
         self.block();
         self.end_scope();
 
-        self.vm.chunk.push_loop(start);
+        self.chunk_mut().push_loop(start);
 
-        self.vm.chunk.patch_jump(jump);
+        self.chunk_mut().patch_jump(jump);
     }
 
     fn statement(&mut self) {
@@ -443,10 +475,10 @@ impl Compiler {
             self.statement();
         }
 
-        self.vm.chunk.push_opcode(OpCode::Return);
+        self.chunk_mut().push_opcode(OpCode::Return);
 
         #[cfg(feature = "decompile")]
-        self.vm.chunk.disassemble();
+        self.chunk_mut().disassemble();
 
         self.vm
     }

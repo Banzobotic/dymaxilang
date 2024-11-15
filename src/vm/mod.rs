@@ -1,27 +1,29 @@
 use chunk::Chunk;
 use gc::{GCAlloc, GC};
+use globals::Globals;
 use object::{Obj, ObjString};
 use stack::Stack;
 use value::Value;
 
 pub mod chunk;
 pub mod gc;
+pub mod globals;
 pub mod object;
 pub mod stack;
 pub mod value;
 
 pub struct VM {
-    pub chunk: Chunk,
     gc: GC,
     stack: Stack,
+    pub globals: Globals,
 }
 
 impl VM {
     pub fn new() -> Self {
         VM {
-            chunk: Chunk::new(),
             gc: GC::new(),
             stack: Stack::new(),
+            globals: Globals::new(),
         }
     }
 
@@ -52,11 +54,7 @@ impl VM {
             }
         }
 
-        for value in self.chunk.constants.iter_mut() {
-            self.gc.mark(*value);
-        }
-
-        for value in self.chunk.globals.iter_mut() {
+        for value in self.globals.globals.iter_mut() {
             self.gc.mark(*value);
         }
     }
@@ -173,11 +171,11 @@ impl VM {
                 }
                 Op::DefineGlobal => {
                     let idx = self.chunk.next_byte();
-                    self.chunk.set_global(idx, self.stack.pop());
+                    self.globals.set(idx, self.stack.pop());
                 }
                 Op::GetGlobal => {
                     let idx = self.chunk.next_byte();
-                    let value = self.chunk.get_global(idx);
+                    let value = self.globals.get(idx);
 
                     if value.is_undef() {
                         panic!("Attempted to get value of undefined variable");
@@ -187,13 +185,13 @@ impl VM {
                 }
                 Op::SetGlobal => {
                     let idx = self.chunk.next_byte();
-                    let prev_value = self.chunk.get_global(idx);
+                    let prev_value = self.globals.get(idx);
 
                     if prev_value.is_undef() {
                         panic!("Attemped to set value of undefined variable");
                     }
 
-                    self.chunk.set_global(idx, self.stack.peek(0));
+                    self.globals.set(idx, self.stack.peek(0));
                 }
                 Op::GetLocal => unsafe {
                     self.stack.push(

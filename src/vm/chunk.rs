@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ptr::NonNull};
+use std::ptr::NonNull;
 
 use super::value::Value;
 
@@ -38,8 +38,6 @@ pub struct Chunk {
     code: Vec<u8>,
     ip: NonNull<u8>,
     pub constants: Vec<Value>,
-    pub globals: Vec<Value>,
-    pub global_names: HashMap<String, u8>,
 }
 
 impl Chunk {
@@ -52,9 +50,11 @@ impl Chunk {
             code,
             ip,
             constants: Vec::new(),
-            globals: Vec::new(),
-            global_names: HashMap::new(),
         }
+    }
+
+    pub fn size(&self) -> usize {
+        self.code.len() + self.constants.len() * size_of::<Value>()
     }
 
     fn add_constant(&mut self, constant: Value) -> u8 {
@@ -128,29 +128,9 @@ impl Chunk {
         self.ip = unsafe { self.ip.offset(offset as i8 as isize) }
     }
 
-    pub fn get_global_idx(&mut self, name: &str) -> u8 {
-        match self.global_names.get(name) {
-            Some(idx) => *idx,
-            None => {
-                let len = self.globals.len() as u8;
-                self.global_names.insert(name.to_owned(), len);
-                self.globals.push(Value::UNDEF);
-                len
-            }
-        }
-    }
-
-    pub fn get_global(&mut self, idx: u8) -> Value {
-        self.globals[idx as usize]
-    }
-
-    pub fn set_global(&mut self, idx: u8, value: Value) {
-        self.globals[idx as usize] = value;
-    }
-
     #[cfg(any(feature = "decompile", feature = "trace_execution"))]
     pub fn current_offset(&self) -> usize {
-        unsafe { self.ip.sub(self.code.as_ptr() as usize).as_ptr() as usize }
+        self.ip.as_ptr().wrapping_sub(self.code.as_ptr() as usize) as usize 
     }
 
     #[cfg(any(feature = "decompile", feature = "trace_execution"))]

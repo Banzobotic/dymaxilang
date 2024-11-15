@@ -3,15 +3,19 @@ use std::{
     ptr,
 };
 
+use super::chunk::Chunk;
+
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ObjKind {
     String,
+    Function,
 }
 
 pub union Obj {
     pub common: *mut ObjCommon,
     pub string: *mut ObjString,
+    pub function: *mut ObjFunction,
 }
 
 impl Obj {
@@ -23,6 +27,7 @@ impl Obj {
         unsafe {
             match self.kind() {
                 ObjKind::String => (*self.string).value.len() + size_of::<ObjString>(),
+                ObjKind::Function => (*self.function).chunk.size() + size_of::<ObjFunction>(),
             }
         }
     }
@@ -34,6 +39,7 @@ impl Obj {
         unsafe {
             match self.kind() {
                 ObjKind::String => drop(Box::from_raw(self.string)),
+                ObjKind::Function => drop(Box::from_raw(self.function)),
             }
         }
     }
@@ -49,6 +55,7 @@ impl Display for Obj {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self.kind() {
             ObjKind::String => write!(f, "{}", unsafe { &(*self.string).value }),
+            ObjKind::Function => write!(f, "<fn>"),
         }
     }
 }
@@ -104,6 +111,24 @@ impl ObjString {
         ObjString {
             common,
             value: value.into(),
+        }
+    }
+}
+
+#[repr(C)]
+pub struct ObjFunction {
+    pub common: ObjCommon,
+    pub arity: u32,
+    pub chunk: Chunk,
+}
+
+impl ObjFunction {
+    pub fn new() -> Self {
+        let common = ObjCommon::new(ObjKind::Function);
+        Self {
+            common,
+            arity: 0,
+            chunk: Chunk::new(),
         }
     }
 }

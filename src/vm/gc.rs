@@ -39,6 +39,11 @@ impl GC {
 
             match unsafe { obj.common.read().kind } {
                 ObjKind::String => (),
+                ObjKind::Function => {
+                    for value in unsafe { (*obj.function).chunk.constants.iter_mut() } {
+                        self.mark(*value);
+                    }
+                }
             }
         }
     }
