@@ -3,9 +3,9 @@ pub enum TokenKind {
     Op(OpKind),
     Atom(AtomKind),
     SemiColon,
+    Comma,
     OpenBrace,
     CloseBrace,
-    Fn,
     For,
     In,
     Let,
@@ -43,6 +43,7 @@ pub enum AtomKind {
     True,
     False,
     Null,
+    Fn,
 }
 
 #[derive(Clone, Copy)]

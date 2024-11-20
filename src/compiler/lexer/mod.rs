@@ -73,7 +73,7 @@ impl Lexer {
         match cs.next().unwrap() {
             'f' => match cs.next().unwrap() {
                 'a' => check_keyword(2, "lse", TokenKind::Atom(AtomKind::False)),
-                'n' => TokenKind::Fn,
+                'n' => TokenKind::Atom(AtomKind::Fn),
                 'o' => check_keyword(2, "r", TokenKind::For),
                 _ => TokenKind::Atom(AtomKind::Ident),
             },
@@ -187,6 +187,7 @@ impl Lexer {
                 '0'..='9' => return self.number(),
                 '"' => return self.string(),
                 ';' => return self.make_token(TokenKind::SemiColon),
+                ',' => return self.make_token(TokenKind::Comma),
                 '\n' => {
                     self.line += 1;
                 }

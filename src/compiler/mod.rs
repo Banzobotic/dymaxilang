@@ -1,6 +1,11 @@
 use lexer::{AtomKind, Lexer, OpKind, Token, TokenKind};
 
-use crate::vm::{chunk::{Chunk, OpCode}, object::{ObjFunction, ObjString}, value::Value, VM};
+use crate::vm::{
+    chunk::{Chunk, OpCode},
+    object::{ObjFunction, ObjString},
+    value::Value,
+    VM,
+};
 
 mod lexer;
 
@@ -66,6 +71,8 @@ struct CompilingFunction {
     function: ObjFunction,
     locals: Vec<Local>,
     scope_depth: u32,
+    current_stack_effect: u32,
+    peak_stack_effect: u32,
     is_function: bool,
 }
 
@@ -75,6 +82,8 @@ impl CompilingFunction {
             function: ObjFunction::new(),
             locals: Vec::new(),
             scope_depth: 0,
+            current_stack_effect: 10,
+            peak_stack_effect: 10,
             is_function,
         }
     }
@@ -95,6 +104,32 @@ impl Compiler {
         }
     }
 
+    fn push_fn(&mut self) {
+        self.function_stack.push(CompilingFunction::new(true));
+    }
+
+    fn pop_fn(&mut self) {
+        self.chunk_mut().push_opcode(OpCode::Null);
+        self.chunk_mut().push_opcode(OpCode::Return);
+        let stack_effect = self.function_stack.last().unwrap().peak_stack_effect;
+        let mut func = self.function_stack.pop().unwrap().function;
+        func.stack_effect = stack_effect;
+        let func = self.vm.alloc(func);
+        self.chunk_mut().push_constant(Value::obj(func));
+    }
+
+    fn add_stack_effect(&mut self, effect: u32) {
+        let function = self.function_stack.last_mut().unwrap();
+        function.current_stack_effect += effect;
+        function.peak_stack_effect =
+            u32::max(function.current_stack_effect, function.peak_stack_effect);
+    }
+
+    fn remove_stack_effect(&mut self, effect: u32) {
+        let function = self.function_stack.last_mut().unwrap();
+        function.current_stack_effect -= effect;
+    }
+
     fn locals(&self) -> &Vec<Local> {
         &self.function_stack.last().unwrap().locals
     }
@@ -107,8 +142,12 @@ impl Compiler {
         self.function_stack.last().unwrap().scope_depth
     }
 
+    fn current(&mut self) -> &mut ObjFunction {
+        &mut self.function_stack.last_mut().unwrap().function
+    }
+
     fn chunk_mut(&mut self) -> &mut Chunk {
-        &mut self.function_stack.last_mut().unwrap().function.chunk
+        &mut self.current().chunk
     }
 
     fn integer(&mut self) {
@@ -178,6 +217,54 @@ impl Compiler {
         }
     }
 
+    fn function(&mut self) {
+        self.push_fn();
+        self.begin_scope();
+
+        self.parser.consume(TokenKind::Op(OpKind::OpenParen));
+        if !self.parser.compare_next(TokenKind::Op(OpKind::CloseParen)) {
+            loop {
+                self.current().arity += 1;
+                if self.current().arity > 255 {
+                    panic!("Can't have more than 255 parameters");
+                }
+                self.parse_variable("Expected parameter");
+                self.mark_initialised();
+
+                if !self.parser.check(TokenKind::Comma) {
+                    break;
+                }
+            }
+        }
+        self.parser.consume(TokenKind::Op(OpKind::CloseParen));
+        self.parser.consume(TokenKind::OpenBrace);
+        self.block();
+
+        self.pop_fn();
+    }
+
+    fn call(&mut self) {
+        let mut arg_count = 0;
+        if !self.parser.compare_next(TokenKind::Op(OpKind::CloseParen)) {
+            loop {
+                if arg_count == u8::MAX {
+                    panic!("Can't have more than 255 arguments");
+                }
+                arg_count += 1;
+
+                self.expression();
+
+                if !self.parser.check(TokenKind::Comma) {
+                    break;
+                }
+            }
+        }
+        self.parser.consume(TokenKind::Op(OpKind::CloseParen));
+
+        self.chunk_mut().push_opcode(OpCode::Call);
+        self.chunk_mut().push_byte(arg_count);
+    }
+
     fn expression_bp(&mut self, min_bp: u8) {
         fn prefix_bp(op: OpKind) -> ((), u8) {
             match op {
@@ -197,6 +284,7 @@ impl Compiler {
                 }
                 OpKind::Plus | OpKind::Minus => (11, 12),
                 OpKind::Mul | OpKind::Div => (13, 14),
+                OpKind::OpenParen => (15, 16),
                 _ => return None,
             };
             Some(ret)
@@ -210,7 +298,8 @@ impl Compiler {
                 AtomKind::Ident => self.identifier(),
                 AtomKind::True => self.chunk_mut().push_constant(Value::TRUE),
                 AtomKind::False => self.chunk_mut().push_constant(Value::FALSE),
-                AtomKind::Null => self.chunk_mut().push_constant(Value::NULL),
+                AtomKind::Null => self.chunk_mut().push_opcode(OpCode::Null),
+                AtomKind::Fn => self.function(),
             },
             TokenKind::Op(OpKind::OpenParen) => {
                 self.expression_bp(0);
@@ -247,6 +336,9 @@ impl Compiler {
                     self.chunk_mut().push_opcode(OpCode::Pop);
                     self.expression_bp(r_bp);
                     self.chunk_mut().patch_jump(jump);
+                    continue;
+                } else if op == OpKind::OpenParen {
+                    self.call();
                     continue;
                 }
 
@@ -289,6 +381,20 @@ impl Compiler {
         self.parser.consume(TokenKind::SemiColon)
     }
 
+    fn return_statement(&mut self) {
+        if !self.function_stack.last().unwrap().is_function {
+            panic!("Can only return from functions");
+        }
+
+        if self.parser.compare_next(TokenKind::SemiColon) {
+            self.chunk_mut().push_opcode(OpCode::Null);
+        } else {
+            self.expression();
+        }
+        self.chunk_mut().push_opcode(OpCode::Return);
+        self.parser.consume(TokenKind::SemiColon);
+    }
+
     fn begin_scope(&mut self) {
         self.function_stack.last_mut().unwrap().scope_depth += 1;
     }
@@ -303,6 +409,7 @@ impl Compiler {
 
             self.chunk_mut().push_opcode(OpCode::Pop);
             self.locals_mut().pop();
+            self.remove_stack_effect(1);
         }
     }
 
@@ -363,6 +470,7 @@ impl Compiler {
     }
 
     fn mark_initialised(&mut self) {
+        self.add_stack_effect(1);
         self.locals_mut().last_mut().unwrap().depth = Some(self.scope_depth());
     }
 
@@ -382,7 +490,7 @@ impl Compiler {
         if self.parser.check(TokenKind::Op(OpKind::Equal)) {
             self.expression();
         } else {
-            self.chunk_mut().push_opcode(OpCode::Nil);
+            self.chunk_mut().push_opcode(OpCode::Null);
         }
 
         self.parser.consume(TokenKind::SemiColon);
@@ -461,6 +569,8 @@ impl Compiler {
             self.var_decl();
         } else if self.parser.check(TokenKind::Print) {
             self.print_statement();
+        } else if self.parser.check(TokenKind::Return) {
+            self.return_statement();
         } else if self.parser.check(TokenKind::OpenBrace) {
             self.begin_scope();
             self.block();
@@ -475,10 +585,16 @@ impl Compiler {
             self.statement();
         }
 
+        self.chunk_mut().push_opcode(OpCode::Null);
         self.chunk_mut().push_opcode(OpCode::Return);
 
         #[cfg(feature = "decompile")]
         self.chunk_mut().disassemble();
+
+        let function = self.function_stack.pop().unwrap().function;
+        let function = self.vm.alloc(function);
+
+        self.vm.push_call_frame(function);
 
         self.vm
     }

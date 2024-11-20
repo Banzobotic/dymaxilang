@@ -5,7 +5,8 @@ use super::value::Value;
 pub struct Stack {
     #[allow(unused)]
     stack: Vec<Value>,
-    top: NonNull<Value>,
+    pub top: NonNull<Value>,
+    max_use: usize,
 }
 
 impl Stack {
@@ -13,7 +14,11 @@ impl Stack {
         let mut stack = Vec::with_capacity(256);
         let top = unsafe { NonNull::new_unchecked(stack.as_mut_ptr()) };
 
-        Self { stack, top }
+        Self {
+            stack,
+            top,
+            max_use: 0,
+        }
     }
 
     pub fn push(&mut self, val: Value) {
@@ -34,15 +39,23 @@ impl Stack {
         unsafe { self.top.sub(position + 1).read() }
     }
 
-    pub fn top(&self) -> NonNull<Value> {
-        self.top
-    }
-
     pub fn base(&self) -> *const Value {
         self.stack.as_ptr()
     }
 
     pub fn base_mut(&mut self) -> *mut Value {
         self.stack.as_mut_ptr()
+    }
+
+    pub fn allocate_slots(&mut self, slots: u32) {
+        self.max_use += slots as usize;
+
+        if self.max_use > self.stack.capacity() {
+            self.stack.reserve(self.stack.capacity() * 2);
+        }
+    }
+
+    pub fn free_slots(&mut self, slots: u32) {
+        self.max_use -= slots as usize;
     }
 }

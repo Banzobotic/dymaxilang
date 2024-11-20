@@ -9,6 +9,7 @@ pub struct GC {
     greys: Vec<Obj>,
     bytes_allocated: usize,
     next_gc: usize,
+    program_running: bool,
 }
 
 impl GC {
@@ -21,7 +22,12 @@ impl GC {
             greys: Vec::new(),
             bytes_allocated: 0,
             next_gc: 1024 * 1024,
+            program_running: false,
         }
+    }
+
+    pub fn program_started(&mut self) {
+        self.program_running = true;
     }
 
     pub fn alloc<T>(&mut self, obj: impl GCAlloc<T>) -> Obj {
@@ -69,7 +75,8 @@ impl GC {
     }
 
     pub fn should_gc(&self) -> bool {
-        self.bytes_allocated > self.next_gc || cfg!(feature = "clobber_gc")
+        (self.bytes_allocated > self.next_gc || cfg!(feature = "clobber_gc"))
+            && self.program_running
     }
 
     pub fn free_everything(&mut self) {

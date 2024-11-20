@@ -9,7 +9,10 @@ pub struct Globals {
 
 impl Globals {
     pub fn new() -> Self {
-        Self { globals: Vec::new(), global_names: HashMap::new() }
+        Self {
+            globals: Vec::new(),
+            global_names: HashMap::new(),
+        }
     }
 
     pub fn get(&self, idx: u8) -> Value {

@@ -1,10 +1,13 @@
-use chunk::Chunk;
+use std::ptr::NonNull;
+
+use call_frame::CallFrame;
 use gc::{GCAlloc, GC};
 use globals::Globals;
-use object::{Obj, ObjString};
+use object::{Obj, ObjKind, ObjString};
 use stack::Stack;
 use value::Value;
 
+pub mod call_frame;
 pub mod chunk;
 pub mod gc;
 pub mod globals;
@@ -13,6 +16,7 @@ pub mod stack;
 pub mod value;
 
 pub struct VM {
+    frames: Vec<CallFrame>,
     gc: GC,
     stack: Stack,
     pub globals: Globals,
@@ -21,6 +25,7 @@ pub struct VM {
 impl VM {
     pub fn new() -> Self {
         VM {
+            frames: Vec::new(),
             gc: GC::new(),
             stack: Stack::new(),
             globals: Globals::new(),
@@ -47,16 +52,55 @@ impl VM {
 
     fn mark_roots(&mut self) {
         let mut stack_ptr = self.stack.base();
-        while stack_ptr != self.stack.top().as_ptr() {
+        while stack_ptr != self.stack.top.as_ptr() {
             unsafe {
                 self.gc.mark(*stack_ptr);
                 stack_ptr = stack_ptr.add(1);
             }
         }
 
+        for frame in self.frames.iter_mut() {
+            self.gc.mark(frame.function)
+        }
+
         for value in self.globals.globals.iter_mut() {
             self.gc.mark(*value);
         }
+    }
+
+    pub fn call(&mut self, function: Obj, arg_count: u8) {
+        let arity = unsafe { (*function.function).arity };
+        if arg_count as u32 != arity {
+            panic!("Expected {arity} arguments but got {arg_count}");
+        }
+
+        self.push_call_frame(function);
+    }
+
+    pub fn call_value(&mut self, function: Value, arg_count: u8) {
+        if function.is_obj() && function.as_obj().kind() == ObjKind::Function {
+            self.call(function.as_obj(), arg_count);
+            return;
+        }
+        panic!("Can only call functions");
+    }
+
+    pub fn push_call_frame(&mut self, function: Obj) {
+        self.stack
+            .allocate_slots(unsafe { (*function.function).stack_effect });
+        self.frames
+            .push(CallFrame::new(function, self.stack.top, self.stack.base()));
+    }
+
+    pub fn pop_call_frame(&mut self) -> CallFrame {
+        let function = self.frames.pop().unwrap();
+        self.stack
+            .free_slots(unsafe { (*function.function.function).stack_effect });
+        function
+    }
+
+    pub fn frame(&mut self) -> &mut CallFrame {
+        self.frames.last_mut().unwrap()
     }
 
     pub fn run(&mut self) {
@@ -101,23 +145,31 @@ impl VM {
             };
         }
 
+        self.gc.program_started();
+
         loop {
             #[cfg(feature = "trace_execution")]
             {
                 let mut stack_ptr = self.stack.base();
-                while stack_ptr != self.stack.top().as_ptr() {
+                while stack_ptr != self.stack.top.as_ptr() {
                     print!("[ {} ]", unsafe { *stack_ptr });
                     stack_ptr = unsafe { stack_ptr.add(1) };
                 }
                 println!();
-                self.chunk
-                    .disassemble_instruction(self.chunk.current_offset());
+                unsafe {
+                    (*self.frame().function.function)
+                        .chunk
+                        .disassemble_instruction(self.frame().current_offset());
+                }
             }
 
             use chunk::OpCode as Op;
-            match unsafe { self.chunk.next_opcode() } {
-                Op::LoadConstant => self.stack.push(self.chunk.next_constant()),
-                Op::Nil => self.stack.push(Value::NULL),
+            match unsafe { self.frame().next_opcode() } {
+                Op::LoadConstant => {
+                    let value = self.frame().next_constant();
+                    self.stack.push(value);
+                }
+                Op::Null => self.stack.push(Value::NULL),
                 Op::Pop => {
                     self.stack.pop();
                 }
@@ -156,7 +208,7 @@ impl VM {
                         panic!("Can only negate numbers");
                     }
                     unsafe {
-                        let top_ptr = self.stack.top().sub(1);
+                        let top_ptr = self.stack.top.sub(1);
                         top_ptr.write(Value::float(-top_ptr.read().as_float()));
                     }
                 }
@@ -165,16 +217,16 @@ impl VM {
                         panic!("Can only not boolean values");
                     }
                     unsafe {
-                        let top_ptr = self.stack.top().sub(1);
+                        let top_ptr = self.stack.top.sub(1);
                         top_ptr.write(Value::bool(!top_ptr.read().as_bool()));
                     }
                 }
                 Op::DefineGlobal => {
-                    let idx = self.chunk.next_byte();
+                    let idx = self.frame().next_byte();
                     self.globals.set(idx, self.stack.pop());
                 }
                 Op::GetGlobal => {
-                    let idx = self.chunk.next_byte();
+                    let idx = self.frame().next_byte();
                     let value = self.globals.get(idx);
 
                     if value.is_undef() {
@@ -184,7 +236,7 @@ impl VM {
                     self.stack.push(value);
                 }
                 Op::SetGlobal => {
-                    let idx = self.chunk.next_byte();
+                    let idx = self.frame().next_byte();
                     let prev_value = self.globals.get(idx);
 
                     if prev_value.is_undef() {
@@ -194,49 +246,62 @@ impl VM {
                     self.globals.set(idx, self.stack.peek(0));
                 }
                 Op::GetLocal => unsafe {
-                    self.stack.push(
-                        self.stack
-                            .base()
-                            .add(self.chunk.next_byte() as usize)
-                            .read(),
-                    );
+                    let offset = self.frame().next_byte() as usize;
+                    let fp_offset = self.frame().fp_offset;
+                    self.stack
+                        .push(self.stack.base().add(offset + fp_offset).read());
                 },
                 Op::SetLocal => unsafe {
                     self.stack
                         .base_mut()
-                        .add(self.chunk.next_byte() as usize)
+                        .add(self.frame().next_byte() as usize)
                         .write(self.stack.peek(0));
                 },
                 Op::Print => println!("{}", self.stack.pop()),
                 Op::Jump => {
-                    let offset = self.chunk.next_byte();
+                    let offset = self.frame().next_byte();
 
-                    self.chunk.jump(offset);
+                    self.frame().jump(offset);
                 }
                 Op::JumpIfFalse => {
-                    let offset = self.chunk.next_byte();
+                    let offset = self.frame().next_byte();
 
                     if !self.stack.pop().as_bool() {
-                        self.chunk.jump(offset);
+                        self.frame().jump(offset);
                     }
                 }
                 Op::JumpIfFalseNoPop => {
-                    let offset = self.chunk.next_byte();
+                    let offset = self.frame().next_byte();
 
                     if !self.stack.peek(0).as_bool() {
-                        self.chunk.jump(offset);
+                        self.frame().jump(offset);
                     }
                 }
                 Op::JumpIfTrueNoPop => {
-                    let offset = self.chunk.next_byte();
+                    let offset = self.frame().next_byte();
 
                     if self.stack.peek(0).as_bool() {
-                        self.chunk.jump(offset);
+                        self.frame().jump(offset);
                     }
                 }
+                Op::Call => {
+                    let arg_count = self.frame().next_byte();
+                    let function = self.stack.peek(arg_count as usize);
+                    self.call_value(function, arg_count);
+                }
                 Op::Return => {
-                    self.gc.free_everything();
-                    return;
+                    let result = self.stack.pop();
+                    let old_frame = self.pop_call_frame();
+
+                    if self.frames.is_empty() {
+                        self.gc.free_everything();
+                        return;
+                    }
+
+                    self.stack.top = unsafe {
+                        NonNull::new_unchecked(self.stack.base_mut().add(old_frame.fp_offset - 1))
+                    };
+                    self.stack.push(result);
                 }
             }
         }

@@ -12,6 +12,7 @@ pub enum ObjKind {
     Function,
 }
 
+#[derive(Clone, Copy)]
 pub union Obj {
     pub common: *mut ObjCommon,
     pub string: *mut ObjString,
@@ -84,7 +85,8 @@ macro_rules! from_obj_impl {
 
 from_obj_impl! {
     common ObjCommon,
-    string ObjString
+    string ObjString,
+    function ObjFunction
 }
 
 #[repr(C)]
@@ -119,6 +121,7 @@ impl ObjString {
 pub struct ObjFunction {
     pub common: ObjCommon,
     pub arity: u32,
+    pub stack_effect: u32,
     pub chunk: Chunk,
 }
 
@@ -128,6 +131,7 @@ impl ObjFunction {
         Self {
             common,
             arity: 0,
+            stack_effect: 10,
             chunk: Chunk::new(),
         }
     }
