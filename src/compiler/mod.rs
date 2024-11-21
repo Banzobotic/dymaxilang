@@ -494,6 +494,23 @@ impl Compiler {
         self.define_variable(global_idx);
     }
 
+    fn if_statement(&mut self) {
+        self.expression();
+        self.parser.consume(TokenKind::OpenBrace);
+        let jump = self.chunk_mut().push_jump(OpCode::JumpIfFalse);
+        
+        self.block();
+        if self.parser.check(TokenKind::Else) {
+            let else_jump = self.chunk_mut().push_jump(OpCode::Jump);
+            self.chunk_mut().patch_jump(jump);
+            self.parser.consume(TokenKind::OpenBrace);
+            self.block();
+            self.chunk_mut().patch_jump(else_jump);
+        } else {
+            self.chunk_mut().patch_jump(jump);
+        }
+    }
+
     fn for_loop(&mut self) {
         self.begin_scope();
         self.parser.consume(TokenKind::Atom(AtomKind::Ident));
@@ -561,6 +578,8 @@ impl Compiler {
             self.while_loop();
         } else if self.parser.check(TokenKind::For) {
             self.for_loop();
+        } else if self.parser.check(TokenKind::If) {
+            self.if_statement();
         } else if self.parser.check(TokenKind::Let) {
             self.var_decl();
         } else if self.parser.check(TokenKind::Return) {

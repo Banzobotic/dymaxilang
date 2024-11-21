@@ -1,16 +1,8 @@
-let time = clock();
-
-let hello_world = fn () {
-	print("hello world");
+let fib = fn (n) {
+	if n < 2 { return n; }
+	return fib(n - 2) + fib(n - 1);
 };
 
-let say_hello = fn (name) {
-	print("hello " + name);
-	return "bye then";
-};
-
-hello_world();
-print(say_hello("banzobotic"));
-print(say_hello("Donald Duck"));
-print(say_hello("Jeremy"));
-print(clock() - time);
+let start = clock();
+print(fib(35));
+print(clock() - start);

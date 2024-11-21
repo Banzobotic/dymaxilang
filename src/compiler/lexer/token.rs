@@ -6,6 +6,8 @@ pub enum TokenKind {
     Comma,
     OpenBrace,
     CloseBrace,
+    If,
+    Else,
     For,
     In,
     Let,
