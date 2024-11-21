@@ -1,4 +1,4 @@
-use std::ptr::NonNull;
+use std::ptr::{self, NonNull};
 
 use call_frame::CallFrame;
 use gc::{GCAlloc, GC};
@@ -17,6 +17,7 @@ pub mod value;
 
 pub struct VM {
     frames: Vec<CallFrame>,
+    frame_top: *mut CallFrame,
     gc: GC,
     stack: Stack,
     pub globals: Globals,
@@ -26,6 +27,7 @@ impl VM {
     pub fn new() -> Self {
         VM {
             frames: Vec::new(),
+            frame_top: ptr::null_mut(),
             gc: GC::new(),
             stack: Stack::new(),
             globals: Globals::new(),
@@ -101,17 +103,19 @@ impl VM {
             .allocate_slots(unsafe { (*function.function).stack_effect });
         self.frames
             .push(CallFrame::new(function, self.stack.top, self.stack.base()));
+        self.frame_top = self.frames.last_mut().unwrap() as *mut CallFrame;
     }
 
     pub fn pop_call_frame(&mut self) -> CallFrame {
         let function = self.frames.pop().unwrap();
         self.stack
             .free_slots(unsafe { (*function.function.function).stack_effect });
+        self.frame_top = self.frames.last_mut().unwrap() as *mut CallFrame;
         function
     }
 
     pub fn frame(&mut self) -> &mut CallFrame {
-        self.frames.last_mut().unwrap()
+        unsafe { self.frame_top.as_mut().unwrap_unchecked() }
     }
 
     pub fn run(&mut self) {
@@ -300,13 +304,14 @@ impl VM {
                     self.call_value(function, arg_count);
                 }
                 Op::Return => {
-                    let result = self.stack.pop();
-                    let old_frame = self.pop_call_frame();
-
-                    if self.frames.is_empty() {
+                    if self.frames.len() == 1 {
                         self.gc.free_everything();
                         return;
                     }
+
+                    let result = self.stack.pop();
+                    let old_frame = self.pop_call_frame();
+
 
                     self.stack.top = unsafe {
                         NonNull::new_unchecked(self.stack.base_mut().add(old_frame.fp_offset - 1))
