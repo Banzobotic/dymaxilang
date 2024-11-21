@@ -44,7 +44,7 @@ impl GC {
             println!("Blacken: {:?} {obj}", obj.kind());
 
             match unsafe { obj.common.read().kind } {
-                ObjKind::String => (),
+                ObjKind::String | ObjKind::Native => (),
                 ObjKind::Function => {
                     for value in unsafe { (*obj.function).chunk.constants.iter_mut() } {
                         self.mark(*value);

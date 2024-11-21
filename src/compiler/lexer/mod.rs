@@ -80,7 +80,6 @@ impl Lexer {
             'i' => check_keyword(1, "n", TokenKind::In),
             'l' => check_keyword(1, "et", TokenKind::Let),
             'n' => check_keyword(1, "ull", TokenKind::Atom(AtomKind::Null)),
-            'p' => check_keyword(1, "rint", TokenKind::Print),
             'r' => check_keyword(1, "eturn", TokenKind::Return),
             't' => check_keyword(1, "rue", TokenKind::Atom(AtomKind::True)),
             'w' => check_keyword(1, "hile", TokenKind::While),

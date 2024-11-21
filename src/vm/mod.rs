@@ -78,8 +78,19 @@ impl VM {
     }
 
     pub fn call_value(&mut self, function: Value, arg_count: u8) {
-        if function.is_obj() && function.as_obj().kind() == ObjKind::Function {
-            self.call(function.as_obj(), arg_count);
+        if function.is_obj() {
+            match function.as_obj().kind() {
+                ObjKind::Function => self.call(function.as_obj(), arg_count),
+                ObjKind::Native => {
+                    let native = unsafe { (*function.as_obj().native).function };
+                    let result = native(arg_count as u32, unsafe {
+                        self.stack.top.sub(arg_count as usize)
+                    });
+                    self.stack.top = unsafe { self.stack.top.sub(arg_count as usize + 1) };
+                    self.stack.push(result);
+                }
+                _ => panic!("Can only call functions"),
+            }
             return;
         }
         panic!("Can only call functions");
@@ -257,7 +268,6 @@ impl VM {
                         .add(self.frame().next_byte() as usize)
                         .write(self.stack.peek(0));
                 },
-                Op::Print => println!("{}", self.stack.pop()),
                 Op::Jump => {
                     let offset = self.frame().next_byte();
 

@@ -23,7 +23,6 @@ pub enum OpCode {
     SetGlobal,
     GetLocal,
     SetLocal,
-    Print,
     Jump,
     JumpIfFalse,
     JumpIfFalseNoPop,
@@ -114,7 +113,6 @@ impl Chunk {
             | Op::LessEqual
             | Op::Not
             | Op::Negate
-            | Op::Print
             | Op::Return) => {
                 println!("{:?}", op);
                 offset + 1

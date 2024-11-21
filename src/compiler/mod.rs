@@ -1,8 +1,10 @@
+use std::{ptr::NonNull, time::SystemTime};
+
 use lexer::{AtomKind, Lexer, OpKind, Token, TokenKind};
 
 use crate::vm::{
     chunk::{Chunk, OpCode},
-    object::{ObjFunction, ObjString},
+    object::{NativeFn, ObjFunction, ObjNative, ObjString},
     value::Value,
     VM,
 };
@@ -375,12 +377,6 @@ impl Compiler {
         self.chunk_mut().push_opcode(OpCode::Pop);
     }
 
-    fn print_statement(&mut self) {
-        self.expression();
-        self.chunk_mut().push_opcode(OpCode::Print);
-        self.parser.consume(TokenKind::SemiColon)
-    }
-
     fn return_statement(&mut self) {
         if !self.function_stack.last().unwrap().is_function {
             panic!("Can only return from functions");
@@ -567,8 +563,6 @@ impl Compiler {
             self.for_loop();
         } else if self.parser.check(TokenKind::Let) {
             self.var_decl();
-        } else if self.parser.check(TokenKind::Print) {
-            self.print_statement();
         } else if self.parser.check(TokenKind::Return) {
             self.return_statement();
         } else if self.parser.check(TokenKind::OpenBrace) {
@@ -580,7 +574,21 @@ impl Compiler {
         }
     }
 
+    fn define_native(&mut self, name: &str, native: NativeFn) {
+        let native = ObjNative::new(native);
+        let native = self.vm.alloc(native);
+        let idx = self.vm.globals.get_global_idx(name);
+        self.vm.globals.set(idx, Value::obj(native));
+    }
+
+    fn define_natives(&mut self) {
+        self.define_native("clock", clock_native);
+        self.define_native("print", print_native);
+    }
+
     pub fn compile(mut self) -> VM {
+        self.define_natives();
+
         while !self.parser.compare_next(TokenKind::Eof) {
             self.statement();
         }
@@ -598,4 +606,18 @@ impl Compiler {
 
         self.vm
     }
+}
+
+fn clock_native(_arg_count: u32, _args: NonNull<Value>) -> Value {
+    Value::float(
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_secs_f64(),
+    )
+}
+
+fn print_native(_arg_count: u32, args: NonNull<Value>) -> Value {
+    println!("{}", unsafe { args.read() });
+    Value::NULL
 }

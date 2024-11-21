@@ -9,7 +9,6 @@ pub enum TokenKind {
     For,
     In,
     Let,
-    Print,
     Return,
     While,
     Eof,

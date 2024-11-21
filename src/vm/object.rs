@@ -1,15 +1,16 @@
 use std::{
     fmt::{Debug, Display},
-    ptr,
+    ptr::{self, NonNull},
 };
 
-use super::chunk::Chunk;
+use super::{chunk::Chunk, value::Value};
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ObjKind {
     String,
     Function,
+    Native,
 }
 
 #[derive(Clone, Copy)]
@@ -17,6 +18,7 @@ pub union Obj {
     pub common: *mut ObjCommon,
     pub string: *mut ObjString,
     pub function: *mut ObjFunction,
+    pub native: *mut ObjNative,
 }
 
 impl Obj {
@@ -29,6 +31,7 @@ impl Obj {
             match self.kind() {
                 ObjKind::String => (*self.string).value.len() + size_of::<ObjString>(),
                 ObjKind::Function => (*self.function).chunk.size() + size_of::<ObjFunction>(),
+                ObjKind::Native => size_of::<ObjNative>(),
             }
         }
     }
@@ -41,6 +44,7 @@ impl Obj {
             match self.kind() {
                 ObjKind::String => drop(Box::from_raw(self.string)),
                 ObjKind::Function => drop(Box::from_raw(self.function)),
+                ObjKind::Native => drop(Box::from_raw(self.native)),
             }
         }
     }
@@ -57,6 +61,7 @@ impl Display for Obj {
         match self.kind() {
             ObjKind::String => write!(f, "{}", unsafe { &(*self.string).value }),
             ObjKind::Function => write!(f, "<fn>"),
+            ObjKind::Native => write!(f, "<native fn>"),
         }
     }
 }
@@ -86,7 +91,8 @@ macro_rules! from_obj_impl {
 from_obj_impl! {
     common ObjCommon,
     string ObjString,
-    function ObjFunction
+    function ObjFunction,
+    native ObjNative
 }
 
 #[repr(C)]
@@ -133,6 +139,23 @@ impl ObjFunction {
             arity: 0,
             stack_effect: 10,
             chunk: Chunk::new(),
+        }
+    }
+}
+
+pub type NativeFn = fn(u32, NonNull<Value>) -> Value;
+
+#[repr(C)]
+pub struct ObjNative {
+    pub common: ObjCommon,
+    pub function: NativeFn,
+}
+
+impl ObjNative {
+    pub fn new(function: NativeFn) -> Self {
+        Self {
+            common: ObjCommon::new(ObjKind::Native),
+            function,
         }
     }
 }

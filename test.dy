@@ -1,12 +1,16 @@
+let time = clock();
+
 let hello_world = fn () {
-	print "hello world";
+	print("hello world");
 };
 
 let say_hello = fn (name) {
-	print "hello " + name;
+	print("hello " + name);
 	return "bye then";
 };
 
 hello_world();
-print say_hello("banzobotic");
-print say_hello("Donald Duck");
+print(say_hello("banzobotic"));
+print(say_hello("Donald Duck"));
+print(say_hello("Jeremy"));
+print(clock() - time);
