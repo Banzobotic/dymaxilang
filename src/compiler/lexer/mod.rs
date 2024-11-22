@@ -72,17 +72,17 @@ impl Lexer {
         let mut cs = identifier.chars();
         match cs.next().unwrap() {
             'e' => check_keyword(1, "lse", TokenKind::Else),
-            'f' => match cs.next().unwrap() {
+            'f' => match cs.next().unwrap_or('\0') {
                 'a' => check_keyword(2, "lse", TokenKind::Atom(AtomKind::False)),
                 'n' => TokenKind::Atom(AtomKind::Fn),
                 'o' => check_keyword(2, "r", TokenKind::For),
                 _ => TokenKind::Atom(AtomKind::Ident),
             },
-            'i' => match cs.next().unwrap() {
+            'i' => match cs.next().unwrap_or('\0') {
                 'f' => TokenKind::If,
                 'n' => TokenKind::In,
                 _ => TokenKind::Atom(AtomKind::Ident),
-            }
+            },
             'l' => check_keyword(1, "et", TokenKind::Let),
             'n' => check_keyword(1, "ull", TokenKind::Atom(AtomKind::Null)),
             'r' => check_keyword(1, "eturn", TokenKind::Return),
