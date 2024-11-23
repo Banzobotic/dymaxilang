@@ -51,7 +51,9 @@ impl Stack {
         self.max_use += slots as usize;
 
         if self.max_use > self.stack.capacity() {
+            let offset = unsafe { self.top.as_ptr().offset_from(self.base()) as usize };
             self.stack.reserve(self.stack.capacity() * 2);
+            self.top = unsafe { NonNull::new_unchecked(self.base_mut().add(offset)) };
         }
     }
 
