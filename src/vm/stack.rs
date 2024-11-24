@@ -28,17 +28,6 @@ impl Stack {
         }
     }
 
-    pub fn pop(&mut self) -> Value {
-        unsafe {
-            self.top = self.top.sub(1);
-            self.top.read()
-        }
-    }
-
-    pub fn peek(&mut self, position: usize) -> Value {
-        unsafe { self.top.sub(position + 1).read() }
-    }
-
     pub fn base(&self) -> *const Value {
         self.stack.as_ptr()
     }

@@ -120,15 +120,19 @@ impl VM {
         unsafe { self.frame_top.as_mut().unwrap_unchecked() }
     }
 
+    #[allow(unused_unsafe)]
     pub fn run(&mut self) {
         let mut ip = self.frame().ip;
+        let mut sp = self.stack.top;
 
         macro_rules! next_byte {
-            () => {{
-                let byte = ip.read();
-                ip = ip.add(1);
-                byte
-            }};
+            () => {
+                unsafe {
+                    let byte = ip.read();
+                    ip = ip.add(1);
+                    byte
+                }
+            };
         }
 
         macro_rules! next_constant {
@@ -156,17 +160,43 @@ impl VM {
             };
         }
 
+        macro_rules! stack_push {
+            ($val:expr) => {
+                unsafe {
+                    sp.write($val);
+                    sp = sp.add(1);
+                }
+            };
+        }
+
+        macro_rules! stack_pop {
+            () => {
+                unsafe {
+                    sp = sp.sub(1);
+                    sp.read()
+                }
+            };
+        }
+
+        macro_rules! stack_peek {
+            ($pos:expr) => {
+                unsafe {
+                    sp.sub($pos + 1).read()
+                }
+            }
+        }
+
         macro_rules! binary_op {
             ($op:tt) => {
                 {
-                    let b = self.stack.pop();
-                    let a = self.stack.pop();
+                    let b = stack_pop!();
+                    let a = stack_pop!();
 
                     if !a.is_float() || !b.is_float() {
                         panic!("Can only do arithmetic operations on floats");
                     }
 
-                    self.stack.push(Value::float(a.as_float() $op b.as_float()));
+                    stack_push!(Value::float(a.as_float() $op b.as_float()));
                 }
             };
         }
@@ -174,10 +204,10 @@ impl VM {
         macro_rules! equality_op {
             ($op:tt) => {
                 {
-                    let b = self.stack.pop();
-                    let a = self.stack.pop();
+                    let b = stack_pop!();
+                    let a = stack_pop!();
 
-                    self.stack.push(Value::bool(a $op b));
+                    stack_push!(Value::bool(a $op b));
                 }
             }
         }
@@ -185,14 +215,14 @@ impl VM {
         macro_rules! comparison_op {
             ($op:tt) => {
                 {
-                    let b = self.stack.pop();
-                    let a = self.stack.pop();
+                    let b = stack_pop!();
+                    let a = stack_pop!();
 
                     if !a.is_float() || !b.is_float() {
                         panic!("Can only compare floats");
                     }
 
-                    self.stack.push(Value::bool(a.as_float() $op b.as_float()));
+                    stack_push!(Value::bool(a.as_float() $op b.as_float()));
                 }
             };
         }
@@ -219,18 +249,18 @@ impl VM {
             match unsafe { std::mem::transmute::<u8, Op>(next_byte!()) } {
                 Op::LoadConstant => {
                     let value = next_constant!();
-                    self.stack.push(value);
+                    stack_push!(value);
                 }
-                Op::Null => self.stack.push(Value::NULL),
+                Op::Null => stack_push!(Value::NULL),
                 Op::Pop => {
-                    self.stack.pop();
+                    stack_pop!();
                 }
                 Op::Add => {
-                    let b = self.stack.pop();
-                    let a = self.stack.pop();
+                    let b = stack_pop!();
+                    let a = stack_pop!();
 
                     if a.is_float() && b.is_float() {
-                        self.stack.push(Value::float(a.as_float() + b.as_float()))
+                        stack_push!(Value::float(a.as_float() + b.as_float()))
                     } else if a.is_string() && b.is_string() {
                         let new_str = unsafe {
                             format!(
@@ -240,8 +270,9 @@ impl VM {
                             )
                         };
                         let obj = ObjString::new(&new_str);
+                        self.stack.top = sp;
                         let obj = self.alloc(obj);
-                        self.stack.push(Value::obj(obj))
+                        stack_push!(Value::obj(obj))
                     } else {
                         panic!("Can only add strings and floats");
                     }
@@ -256,68 +287,67 @@ impl VM {
                 Op::Less => comparison_op!(<),
                 Op::LessEqual => comparison_op!(<=),
                 Op::Negate => {
-                    if !self.stack.peek(0).is_float() {
+                    if !stack_peek!(0).is_float() {
                         panic!("Can only negate numbers");
                     }
                     unsafe {
-                        let top_ptr = self.stack.top.sub(1);
+                        let top_ptr = sp.sub(1);
                         top_ptr.write(Value::float(-top_ptr.read().as_float()));
                     }
                 }
                 Op::Not => {
-                    if !self.stack.peek(0).is_bool() {
+                    if !stack_peek!(0).is_bool() {
                         panic!("Can only not boolean values");
                     }
                     unsafe {
-                        let top_ptr = self.stack.top.sub(1);
+                        let top_ptr = sp.sub(1);
                         top_ptr.write(Value::bool(!top_ptr.read().as_bool()));
                     }
                 }
                 Op::DefineGlobal => {
-                    let idx = unsafe { next_byte!() };
-                    self.globals.set(idx, self.stack.pop());
+                    let idx = next_byte!();
+                    self.globals.set(idx, stack_pop!());
                 }
                 Op::GetGlobal => {
-                    let idx = unsafe { next_byte!() };
+                    let idx = next_byte!();
                     let value = self.globals.get(idx);
 
                     if value.is_undef() {
                         panic!("Attempted to get value of undefined variable");
                     }
 
-                    self.stack.push(value);
+                    stack_push!(value);
                 }
                 Op::SetGlobal => {
-                    let idx = unsafe { next_byte!() };
+                    let idx = next_byte!();
                     let prev_value = self.globals.get(idx);
 
                     if prev_value.is_undef() {
                         panic!("Attemped to set value of undefined variable");
                     }
 
-                    self.globals.set(idx, self.stack.peek(0));
+                    self.globals.set(idx, stack_peek!(0));
                 }
-                Op::GetLocal => unsafe {
+                Op::GetLocal => {
                     let offset = next_byte!() as usize;
                     let fp_offset = self.frame().fp_offset;
-                    self.stack
-                        .push(self.stack.base().add(offset + fp_offset).read());
+                    stack_push!(self.stack.base().add(offset + fp_offset).read());
                 },
                 Op::SetLocal => unsafe {
                     self.stack
                         .base_mut()
                         .add(next_byte!() as usize)
-                        .write(self.stack.peek(0));
+                        .write(stack_peek!(0));
                 },
                 Op::GetMap => {
-                    let key = self.stack.pop();
-                    let map_key = self.stack.pop();
+                    let key = stack_pop!();
+                    let map_key = stack_pop!();
 
                     #[cfg(feature = "local_map_scopes")]
                     for map in unsafe { (*self.frame_top).local_maps.iter().rev() } {
                         if let Some(value_map) = map.get(&map_key) {
                             if let Some(value) = value_map.get(&key) {
-                                self.stack.push(*value);
+                                stack_push!(*value);
                                 continue '_next;
                             }
                         }
@@ -325,7 +355,7 @@ impl VM {
 
                     if let Some(value_map) = self.globals.global_map.get(&map_key) {
                         if let Some(value) = value_map.get(&key) {
-                            self.stack.push(*value);
+                            stack_push!(*value);
                             continue;
                         }
                     }
@@ -333,9 +363,9 @@ impl VM {
                     panic!("Key not found");
                 }
                 Op::SetMap => {
-                    let value = self.stack.pop();
-                    let key = self.stack.pop();
-                    let map_key = self.stack.pop();
+                    let value = stack_pop!();
+                    let key = stack_pop!();
+                    let map_key = stack_pop!();
 
                     #[cfg(feature = "local_map_scopes")]
                     if let Some(map) = self.frame().local_maps.last_mut() {
@@ -354,7 +384,7 @@ impl VM {
                         .or_default()
                         .insert(key, value);
 
-                    self.stack.push(value);
+                    stack_push!(value);
                 }
                 #[cfg(feature = "local_map_scopes")]
                 Op::PushMap => {
@@ -365,37 +395,39 @@ impl VM {
                     self.frame().local_maps.pop();
                 }
                 Op::Jump => {
-                    let offset = unsafe { next_byte!() };
+                    let offset = next_byte!();
 
                     jump!(offset);
                 }
                 Op::JumpIfFalse => {
-                    let offset = unsafe { next_byte!() };
+                    let offset = next_byte!();
 
-                    if !self.stack.pop().as_bool() {
+                    if !stack_pop!().as_bool() {
                         jump!(offset);
                     }
                 }
                 Op::JumpIfFalseNoPop => {
-                    let offset = unsafe { next_byte!() };
+                    let offset = next_byte!();
 
-                    if !self.stack.peek(0).as_bool() {
+                    if !stack_peek!(0).as_bool() {
                         jump!(offset);
                     }
                 }
                 Op::JumpIfTrueNoPop => {
-                    let offset = unsafe { next_byte!() };
+                    let offset = next_byte!();
 
-                    if self.stack.peek(0).as_bool() {
+                    if stack_peek!(0).as_bool() {
                         jump!(offset);
                     }
                 }
                 Op::Call => {
-                    let arg_count = unsafe { next_byte!() };
-                    let function = self.stack.peek(arg_count as usize);
+                    let arg_count = next_byte!();
+                    let function = stack_peek!(arg_count as usize);
                     self.frame().ip = ip;
+                    self.stack.top = sp;
                     self.call_value(function, arg_count);
                     ip = self.frame().ip;
+                    sp = self.stack.top;
                 }
                 Op::Return => {
                     if self.frames.len() == 1 {
@@ -403,14 +435,14 @@ impl VM {
                         return;
                     }
 
-                    let result = self.stack.pop();
+                    let result = stack_pop!();
                     let old_frame = self.pop_call_frame();
                     ip = self.frame().ip;
 
-                    self.stack.top = unsafe {
+                    sp = unsafe {
                         NonNull::new_unchecked(self.stack.base_mut().add(old_frame.fp_offset - 1))
                     };
-                    self.stack.push(result);
+                    stack_push!(result);
                 }
             }
         }
