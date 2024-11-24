@@ -75,6 +75,8 @@ struct CompilingFunction {
     scope_depth: u32,
     current_stack_effect: u32,
     peak_stack_effect: u32,
+    #[cfg(feature = "local_map_scopes")]
+    map_set: Vec<(usize, bool)>,
     is_function: bool,
 }
 
@@ -86,6 +88,8 @@ impl CompilingFunction {
             scope_depth: 0,
             current_stack_effect: 10,
             peak_stack_effect: 10,
+            #[cfg(feature = "local_map_scopes")]
+            map_set: Vec::new(),
             is_function,
         }
     }
@@ -219,6 +223,23 @@ impl Compiler {
         }
     }
 
+    fn map_access(&mut self) {
+        self.expression();
+        self.parser.consume(TokenKind::Op(OpKind::CloseSquare));
+
+        if self.parser.check(TokenKind::Op(OpKind::Equal)) {
+            #[cfg(feature = "local_map_scopes")]
+            if let Some(set) = self.function_stack.last_mut().unwrap().map_set.last_mut() {
+                *set = (set.0, true);
+            }
+
+            self.expression();
+            self.chunk_mut().push_opcode(OpCode::SetMap);
+        } else {
+            self.chunk_mut().push_opcode(OpCode::GetMap);
+        }
+    }
+
     fn function(&mut self) {
         self.push_fn();
         self.begin_scope();
@@ -242,6 +263,8 @@ impl Compiler {
         self.parser.consume(TokenKind::OpenBrace);
         self.block();
 
+        #[cfg(feature = "local_map_scopes")]
+        self.finish_map_scope();
         self.pop_fn();
     }
 
@@ -286,7 +309,15 @@ impl Compiler {
                 }
                 OpKind::Plus | OpKind::Minus => (11, 12),
                 OpKind::Mul | OpKind::Div => (13, 14),
-                OpKind::OpenParen => (15, 16),
+                OpKind::OpenParen => (17, 18),
+                _ => return None,
+            };
+            Some(ret)
+        }
+
+        fn postfix_bp(op: OpKind) -> Option<(u8, ())> {
+            let ret = match op {
+                OpKind::OpenSquare => (17, ()),
                 _ => return None,
             };
             Some(ret)
@@ -321,6 +352,18 @@ impl Compiler {
         }
 
         while let TokenKind::Op(op) = self.parser.current().kind {
+            if let Some((l_bp, ())) = postfix_bp(op) {
+                if l_bp < min_bp {
+                    break;
+                }
+                self.parser.advance();
+
+                match op {
+                    OpKind::OpenSquare => self.map_access(),
+                    _ => panic!("{:?} is not a postfix operator", op),
+                }
+            }
+
             if let Some((l_bp, r_bp)) = infix_bp(op) {
                 if l_bp < min_bp {
                     break;
@@ -391,8 +434,35 @@ impl Compiler {
         self.parser.consume(TokenKind::SemiColon);
     }
 
+    #[cfg(feature = "local_map_scopes")]
+    fn open_map_scope(&mut self) {
+        let target = self.chunk_mut().jump_target();
+        self.function_stack
+            .last_mut()
+            .unwrap()
+            .map_set
+            .push((target, false));
+    }
+
+    #[cfg(feature = "local_map_scopes")]
+    fn finish_map_scope(&mut self) {
+        let (target, map_set) = self
+            .function_stack
+            .last_mut()
+            .unwrap()
+            .map_set
+            .pop()
+            .unwrap();
+        if map_set {
+            self.chunk_mut().push_map(target);
+        }
+    }
+
     fn begin_scope(&mut self) {
         self.function_stack.last_mut().unwrap().scope_depth += 1;
+
+        #[cfg(feature = "local_map_scopes")]
+        self.open_map_scope();
     }
 
     fn end_scope(&mut self) {
@@ -407,6 +477,9 @@ impl Compiler {
             self.locals_mut().pop();
             self.remove_stack_effect(1);
         }
+
+        #[cfg(feature = "local_map_scopes")]
+        self.finish_map_scope();
     }
 
     fn block(&mut self) {
@@ -498,7 +571,7 @@ impl Compiler {
         self.expression();
         self.parser.consume(TokenKind::OpenBrace);
         let jump = self.chunk_mut().push_jump(OpCode::JumpIfFalse);
-        
+
         self.block();
         if self.parser.check(TokenKind::Else) {
             let else_jump = self.chunk_mut().push_jump(OpCode::Jump);

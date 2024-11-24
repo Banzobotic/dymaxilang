@@ -1,3 +1,5 @@
+#[cfg(feature = "local_map_scopes")]
+use std::collections::HashMap;
 use std::ptr::{self, NonNull};
 
 use call_frame::CallFrame;
@@ -162,7 +164,7 @@ impl VM {
 
         self.gc.program_started();
 
-        loop {
+        '_next: loop {
             #[cfg(feature = "trace_execution")]
             {
                 let mut stack_ptr = self.stack.base();
@@ -272,6 +274,61 @@ impl VM {
                         .add(self.frame().next_byte() as usize)
                         .write(self.stack.peek(0));
                 },
+                Op::GetMap => {
+                    let key = self.stack.pop();
+                    let map_key = self.stack.pop();
+
+                    #[cfg(feature = "local_map_scopes")]
+                    for map in unsafe { (*self.frame_top).local_maps.iter().rev() } {
+                        if let Some(value_map) = map.get(&map_key) {
+                            if let Some(value) = value_map.get(&key) {
+                                self.stack.push(*value);
+                                continue '_next;
+                            }
+                        }
+                    }
+
+                    if let Some(value_map) = self.globals.global_map.get(&map_key) {
+                        if let Some(value) = value_map.get(&key) {
+                            self.stack.push(*value);
+                            continue;
+                        }
+                    }
+
+                    panic!("Key not found");
+                }
+                Op::SetMap => {
+                    let value = self.stack.pop();
+                    let key = self.stack.pop();
+                    let map_key = self.stack.pop();
+
+                    #[cfg(feature = "local_map_scopes")]
+                    if let Some(map) = self.frame().local_maps.last_mut() {
+                        map.entry(map_key).or_default().insert(key, value);
+                    } else {
+                        self.globals
+                            .global_map
+                            .entry(map_key)
+                            .or_default()
+                            .insert(key, value);
+                    }
+                    #[cfg(not(feature = "local_map_scopes"))]
+                    self.globals
+                        .global_map
+                        .entry(map_key)
+                        .or_default()
+                        .insert(key, value);
+
+                    self.stack.push(value);
+                }
+                #[cfg(feature = "local_map_scopes")]
+                Op::PushMap => {
+                    self.frame().local_maps.push(HashMap::new());
+                }
+                #[cfg(feature = "local_map_scopes")]
+                Op::PopMap => {
+                    self.frame().local_maps.pop();
+                }
                 Op::Jump => {
                     let offset = self.frame().next_byte();
 
@@ -311,7 +368,6 @@ impl VM {
 
                     let result = self.stack.pop();
                     let old_frame = self.pop_call_frame();
-
 
                     self.stack.top = unsafe {
                         NonNull::new_unchecked(self.stack.base_mut().add(old_frame.fp_offset - 1))

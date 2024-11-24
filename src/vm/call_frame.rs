@@ -1,3 +1,5 @@
+#[cfg(feature = "local_map_scopes")]
+use std::collections::HashMap;
 use std::ptr::NonNull;
 
 use super::{chunk::OpCode, object::Obj, value::Value};
@@ -6,6 +8,8 @@ pub struct CallFrame {
     pub function: Obj,
     ip: *const u8,
     pub fp_offset: usize,
+    #[cfg(feature = "local_map_scopes")]
+    pub local_maps: Vec<HashMap<Value, HashMap<Value, Value>>>,
 }
 
 impl CallFrame {
@@ -20,6 +24,8 @@ impl CallFrame {
                     .sub((*function.function).arity as usize)
                     .offset_from(stack_base) as usize
             },
+            #[cfg(feature = "local_map_scopes")]
+            local_maps: Vec::new(),
         }
     }
 

@@ -5,6 +5,7 @@ use super::value::Value;
 pub struct Globals {
     pub globals: Vec<Value>,
     global_names: HashMap<String, u8>,
+    pub global_map: HashMap<Value, HashMap<Value, Value>>,
 }
 
 impl Globals {
@@ -12,6 +13,7 @@ impl Globals {
         Self {
             globals: Vec::new(),
             global_names: HashMap::new(),
+            global_map: HashMap::new(),
         }
     }
 

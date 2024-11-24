@@ -100,6 +100,17 @@ impl std::cmp::PartialEq for Value {
         }
     }
 }
+impl std::cmp::Eq for Value {}
+
+impl std::hash::Hash for Value {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        if self.is_string() {
+            unsafe { (*self.as_obj().string).value.hash(state) };
+        } else {
+            self.value.hash(state);
+        }
+    }
+}
 
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

@@ -9,5 +9,6 @@ debug_gc = []
 clobber_gc = []
 decompile = []
 trace_execution = []
+local_map_scopes = []
 
 [dependencies]

@@ -34,6 +34,8 @@ pub enum OpKind {
     Or,
     OpenParen,
     CloseParen,
+    OpenSquare,
+    CloseSquare,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

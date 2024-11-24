@@ -23,6 +23,12 @@ pub enum OpCode {
     SetGlobal,
     GetLocal,
     SetLocal,
+    GetMap,
+    SetMap,
+    #[cfg(feature = "local_map_scopes")]
+    PushMap,
+    #[cfg(feature = "local_map_scopes")]
+    PopMap,
     Jump,
     JumpIfFalse,
     JumpIfFalseNoPop,
@@ -51,6 +57,12 @@ impl Chunk {
 
     pub fn size(&self) -> usize {
         self.code.len() + self.constants.len() * size_of::<Value>()
+    }
+
+    #[cfg(feature = "local_map_scopes")]
+    pub fn push_map(&mut self, target: usize) {
+        self.code.insert(target, OpCode::PushMap as u8);
+        self.push_opcode(OpCode::PopMap);
     }
 
     fn add_constant(&mut self, constant: Value) -> u8 {
@@ -113,7 +125,14 @@ impl Chunk {
             | Op::LessEqual
             | Op::Not
             | Op::Negate
+            | Op::GetMap
+            | Op::SetMap
             | Op::Return) => {
+                println!("{:?}", op);
+                offset + 1
+            }
+            #[cfg(feature = "local_map_scopes")]
+            op @ (Op::PushMap | Op::PopMap) => {
                 println!("{:?}", op);
                 offset + 1
             }

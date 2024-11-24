@@ -1,0 +1,14 @@
+let test = fn () {
+	0[0] = "world";
+	print(1[0]);
+	print(0[0]);
+};
+
+0[0] = "hi";
+1[0] = "hello";
+{
+	0[0] = "hello";
+	test();
+	print(0[0]);
+}
+print(0[0]);

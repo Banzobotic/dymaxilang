@@ -185,6 +185,8 @@ impl Lexer {
                 }
                 '(' => return self.make_token(TokenKind::Op(OpKind::OpenParen)),
                 ')' => return self.make_token(TokenKind::Op(OpKind::CloseParen)),
+                '[' => return self.make_token(TokenKind::Op(OpKind::OpenSquare)),
+                ']' => return self.make_token(TokenKind::Op(OpKind::CloseSquare)),
                 '{' => return self.make_token(TokenKind::OpenBrace),
                 '}' => return self.make_token(TokenKind::CloseBrace),
                 'a'..='z' | 'A'..='Z' | '_' => return self.identifier(),
