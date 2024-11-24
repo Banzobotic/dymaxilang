@@ -121,6 +121,41 @@ impl VM {
     }
 
     pub fn run(&mut self) {
+        let mut ip = self.frame().ip;
+
+        macro_rules! next_byte {
+            () => {{
+                let byte = ip.read();
+                ip = ip.add(1);
+                byte
+            }};
+        }
+
+        macro_rules! next_constant {
+            () => {
+                unsafe {
+                    let byte = next_byte!();
+                    (*self.frame().function.function).chunk.constants[byte as usize]
+                }
+            };
+        }
+
+        macro_rules! jump {
+            ($offset:expr) => {
+                unsafe {
+                    ip = ip.offset($offset as i8 as isize);
+                }
+            };
+        }
+
+        #[cfg(feature = "trace_execution")]
+        macro_rules! current_offset {
+            () => {
+                ip.wrapping_sub((*self.frame().function.function).chunk.code_ptr() as usize)
+                    as usize
+            };
+        }
+
         macro_rules! binary_op {
             ($op:tt) => {
                 {
@@ -176,14 +211,14 @@ impl VM {
                 unsafe {
                     (*self.frame().function.function)
                         .chunk
-                        .disassemble_instruction(self.frame().current_offset());
+                        .disassemble_instruction(current_offset!());
                 }
             }
 
             use chunk::OpCode as Op;
-            match unsafe { self.frame().next_opcode() } {
+            match unsafe { std::mem::transmute::<u8, Op>(next_byte!()) } {
                 Op::LoadConstant => {
-                    let value = self.frame().next_constant();
+                    let value = next_constant!();
                     self.stack.push(value);
                 }
                 Op::Null => self.stack.push(Value::NULL),
@@ -239,11 +274,11 @@ impl VM {
                     }
                 }
                 Op::DefineGlobal => {
-                    let idx = self.frame().next_byte();
+                    let idx = unsafe { next_byte!() };
                     self.globals.set(idx, self.stack.pop());
                 }
                 Op::GetGlobal => {
-                    let idx = self.frame().next_byte();
+                    let idx = unsafe { next_byte!() };
                     let value = self.globals.get(idx);
 
                     if value.is_undef() {
@@ -253,7 +288,7 @@ impl VM {
                     self.stack.push(value);
                 }
                 Op::SetGlobal => {
-                    let idx = self.frame().next_byte();
+                    let idx = unsafe { next_byte!() };
                     let prev_value = self.globals.get(idx);
 
                     if prev_value.is_undef() {
@@ -263,7 +298,7 @@ impl VM {
                     self.globals.set(idx, self.stack.peek(0));
                 }
                 Op::GetLocal => unsafe {
-                    let offset = self.frame().next_byte() as usize;
+                    let offset = next_byte!() as usize;
                     let fp_offset = self.frame().fp_offset;
                     self.stack
                         .push(self.stack.base().add(offset + fp_offset).read());
@@ -271,7 +306,7 @@ impl VM {
                 Op::SetLocal => unsafe {
                     self.stack
                         .base_mut()
-                        .add(self.frame().next_byte() as usize)
+                        .add(next_byte!() as usize)
                         .write(self.stack.peek(0));
                 },
                 Op::GetMap => {
@@ -330,35 +365,37 @@ impl VM {
                     self.frame().local_maps.pop();
                 }
                 Op::Jump => {
-                    let offset = self.frame().next_byte();
+                    let offset = unsafe { next_byte!() };
 
-                    self.frame().jump(offset);
+                    jump!(offset);
                 }
                 Op::JumpIfFalse => {
-                    let offset = self.frame().next_byte();
+                    let offset = unsafe { next_byte!() };
 
                     if !self.stack.pop().as_bool() {
-                        self.frame().jump(offset);
+                        jump!(offset);
                     }
                 }
                 Op::JumpIfFalseNoPop => {
-                    let offset = self.frame().next_byte();
+                    let offset = unsafe { next_byte!() };
 
                     if !self.stack.peek(0).as_bool() {
-                        self.frame().jump(offset);
+                        jump!(offset);
                     }
                 }
                 Op::JumpIfTrueNoPop => {
-                    let offset = self.frame().next_byte();
+                    let offset = unsafe { next_byte!() };
 
                     if self.stack.peek(0).as_bool() {
-                        self.frame().jump(offset);
+                        jump!(offset);
                     }
                 }
                 Op::Call => {
-                    let arg_count = self.frame().next_byte();
+                    let arg_count = unsafe { next_byte!() };
                     let function = self.stack.peek(arg_count as usize);
+                    self.frame().ip = ip;
                     self.call_value(function, arg_count);
+                    ip = self.frame().ip;
                 }
                 Op::Return => {
                     if self.frames.len() == 1 {
@@ -368,6 +405,7 @@ impl VM {
 
                     let result = self.stack.pop();
                     let old_frame = self.pop_call_frame();
+                    ip = self.frame().ip;
 
                     self.stack.top = unsafe {
                         NonNull::new_unchecked(self.stack.base_mut().add(old_frame.fp_offset - 1))
