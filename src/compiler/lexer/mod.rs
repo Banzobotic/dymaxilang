@@ -60,8 +60,8 @@ impl Lexer {
         }
     }
 
-    fn make_token(&mut self, kind: TokenKind) -> Option<Token> {
-        Some(Token::new(kind, self.line, self.start, self.position))
+    fn make_token(&mut self, kind: TokenKind) -> Result<Token, String> {
+        Ok(Token::new(kind, self.line, self.start, self.position))
     }
 
     fn identifier_type(&self) -> TokenKind {
@@ -98,7 +98,7 @@ impl Lexer {
         }
     }
 
-    fn identifier(&mut self) -> Option<Token> {
+    fn identifier(&mut self) -> Result<Token, String> {
         while Self::is_alphanumeric(self.peek()) {
             self.advance();
         }
@@ -106,7 +106,7 @@ impl Lexer {
         self.make_token(self.identifier_type())
     }
 
-    fn number(&mut self) -> Option<Token> {
+    fn number(&mut self) -> Result<Token, String> {
         while Self::is_numeric(self.peek()) {
             self.advance();
         }
@@ -120,8 +120,12 @@ impl Lexer {
         self.make_token(TokenKind::Atom(AtomKind::Number))
     }
 
-    fn string(&mut self) -> Option<Token> {
-        while self.peek() != '"' && self.peek() != '\0' {
+    fn string(&mut self) -> Result<Token, String> {
+        while self.peek() != '"' {
+            if self.peek() == '\0' {
+                return Err("string not closed".to_owned());
+            }
+            
             if self.advance() == '\n' {
                 self.line += 1;
             }
@@ -131,7 +135,7 @@ impl Lexer {
         self.make_token(TokenKind::Atom(AtomKind::String))
     }
 
-    pub fn next_token(&mut self) -> Option<Token> {
+    pub fn next_token(&mut self) -> Result<Token, String> {
         loop {
             self.start = self.position;
             match self.advance() {
@@ -206,7 +210,7 @@ impl Lexer {
                 }
                 '\0' => return self.make_token(TokenKind::Eof),
                 c if c.is_whitespace() => (),
-                _ => return None,
+                _ => return Err("unrecognised token".to_owned()),
             }
         }
     }

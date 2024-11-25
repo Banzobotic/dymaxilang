@@ -123,7 +123,7 @@ impl Parser {
             }
 
             match self.current().kind {
-                TokenKind::While | TokenKind::For | TokenKind::If | TokenKind::Return => return,
+                TokenKind::While | TokenKind::For | TokenKind::If | TokenKind::Return | TokenKind::Let => return,
                 _ => (),
             }
 
@@ -137,11 +137,10 @@ impl Parser {
         self.current = loop {
             let token = self.lexer.next_token();
 
-            if let Some(token) = token {
-                break token;
+            match token {
+                Ok(token) => break token,
+                Err(message) => self.error_bad_token(&message),
             }
-
-            self.error_bad_token("unrecognised token");
         };
     }
 
