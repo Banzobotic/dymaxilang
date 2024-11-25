@@ -251,6 +251,11 @@ impl VM {
                     let value = next_constant!();
                     stack_push!(value);
                 }
+                Op::LoadConstantExt => {
+                    let idx = ((next_byte!() as usize) << 16) | ((next_byte!() as usize) << 8) | next_byte!() as usize;
+                    let value = unsafe { (*self.frame().function.function).chunk.constants[idx] };
+                    stack_push!(value);
+                }
                 Op::Null => stack_push!(Value::NULL),
                 Op::Pop => {
                     stack_pop!();

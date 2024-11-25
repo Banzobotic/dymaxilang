@@ -4,6 +4,7 @@ use super::value::Value;
 #[derive(Debug)]
 pub enum OpCode {
     LoadConstant,
+    LoadConstantExt,
     Null,
     Pop,
     Add,
@@ -65,15 +66,22 @@ impl Chunk {
         self.push_opcode(OpCode::PopMap);
     }
 
-    fn add_constant(&mut self, constant: Value) -> u8 {
+    fn add_constant(&mut self, constant: Value) -> usize {
         self.constants.push(constant);
-        self.constants.len() as u8 - 1
+        self.constants.len() - 1
     }
 
     pub fn push_constant(&mut self, constant: Value) {
         let idx = self.add_constant(constant);
-        self.push_opcode(OpCode::LoadConstant);
-        self.push_byte(idx);
+        if idx <= u8::MAX as usize {
+            self.push_opcode(OpCode::LoadConstant);
+            self.push_byte(idx as u8);
+        } else {
+            self.push_opcode(OpCode::LoadConstantExt);
+            self.push_byte(((idx >> 16) & 0xFF) as u8);
+            self.push_byte(((idx >> 8) & 0xFF) as u8);
+            self.push_byte((idx & 0xFF) as u8);
+        }
     }
 
     pub fn push_jump(&mut self, opcode: OpCode) -> usize {
@@ -136,8 +144,7 @@ impl Chunk {
                 println!("{:?}", op);
                 offset + 1
             }
-            op @ (Op::LoadConstant
-            | Op::DefineGlobal
+            op @ (Op::DefineGlobal
             | Op::GetGlobal
             | Op::SetGlobal
             | Op::GetLocal
@@ -150,6 +157,17 @@ impl Chunk {
                 let constant = self.code[offset + 1];
                 println!("{:16} {:04X}", format!("{:?}", op), constant);
                 offset + 2
+            }
+            op @ Op::LoadConstant => {
+                let idx = self.code[offset + 1];
+                println!("{:16} {:04X} {}", format!("{:?}", op), idx, self.constants[idx as usize]);
+                offset + 2
+            }
+            op @ Op::LoadConstantExt => {
+                println!("{} {} {}", self.code[offset + 1], self.code[offset + 2], self.code[offset + 3]);
+                let idx = (self.code[offset + 1] as usize) << 16 | (self.code[offset + 2] as usize) << 8 | self.code[offset + 3] as usize;
+                println!("{:16} {:04X} {}", format!("{:?}", op), idx, self.constants[idx]);
+                offset + 4
             }
         }
     }
