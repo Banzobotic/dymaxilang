@@ -160,13 +160,30 @@ impl Chunk {
             }
             op @ Op::LoadConstant => {
                 let idx = self.code[offset + 1];
-                println!("{:16} {:04X} {}", format!("{:?}", op), idx, self.constants[idx as usize]);
+                println!(
+                    "{:16} {:04X} {}",
+                    format!("{:?}", op),
+                    idx,
+                    self.constants[idx as usize]
+                );
                 offset + 2
             }
             op @ Op::LoadConstantExt => {
-                println!("{} {} {}", self.code[offset + 1], self.code[offset + 2], self.code[offset + 3]);
-                let idx = (self.code[offset + 1] as usize) << 16 | (self.code[offset + 2] as usize) << 8 | self.code[offset + 3] as usize;
-                println!("{:16} {:04X} {}", format!("{:?}", op), idx, self.constants[idx]);
+                println!(
+                    "{} {} {}",
+                    self.code[offset + 1],
+                    self.code[offset + 2],
+                    self.code[offset + 3]
+                );
+                let idx = (self.code[offset + 1] as usize) << 16
+                    | (self.code[offset + 2] as usize) << 8
+                    | self.code[offset + 3] as usize;
+                println!(
+                    "{:16} {:04X} {}",
+                    format!("{:?}", op),
+                    idx,
+                    self.constants[idx]
+                );
                 offset + 4
             }
         }

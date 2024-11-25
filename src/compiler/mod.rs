@@ -15,37 +15,139 @@ struct Parser {
     lexer: lexer::Lexer,
     previous: Option<Token>,
     current: Token,
+    had_error: bool,
+    handling_error: bool,
 }
 
 impl Parser {
     pub fn new(program: String) -> Self {
         let mut lexer = Lexer::new(program);
-        let current = lexer.next_token();
+        let current = lexer.next_token().unwrap();
         Parser {
             lexer,
             previous: None,
             current,
+            had_error: false,
+            handling_error: false,
         }
     }
 
-    pub fn previous(&mut self) -> Token {
+    pub fn previous(&self) -> Token {
         self.previous
             .expect("Can't access previous before advancing parser")
     }
 
-    pub fn current(&mut self) -> Token {
+    pub fn current(&self) -> Token {
         self.current
+    }
+
+    pub fn error_at(&mut self, start: usize, end: usize, line: u32, message: &str) {
+        if self.handling_error {
+            return;
+        }
+        self.handling_error = true;
+
+        let line_start = self.lexer.lines[line as usize - 1];
+        eprintln!(
+            "\x1b[91merror\x1b[0m at [{}:{}]: {message}",
+            line,
+            start - line_start + 1
+        );
+
+        let line_end = if self.lexer.lines.len() > line as usize {
+            self.lexer.lines[line as usize]
+        } else {
+            'outer: {
+                for (i, c) in self.lexer.program().char_indices().skip(line_start) {
+                    if c == '\n' {
+                        break 'outer i + 1;
+                    }
+                }
+                self.lexer.program().len()
+            }
+        };
+
+        eprintln!("    | ");
+        eprint!(
+            "{:^4}| {}",
+            line,
+            &self.lexer.program()[line_start..line_end]
+        );
+        eprint!("    | ");
+        for _ in line_start..start {
+            eprint!(" ");
+        }
+        for _ in start..end {
+            eprint!("^");
+        }
+        eprintln!();
+        eprintln!("    | \n");
+
+        self.had_error = true;
+    }
+
+    pub fn error_bad_token(&mut self, message: &str) {
+        self.error_at(
+            self.previous().end,
+            self.previous().end + 1,
+            self.previous().line,
+            message,
+        );
+    }
+
+    pub fn error(&mut self, message: &str) {
+        self.error_at(
+            self.previous().start,
+            self.previous().end,
+            self.previous().line,
+            message,
+        );
+    }
+
+    fn sync(&mut self) {
+        self.handling_error = false;
+        let mut scope_count = 0;
+
+        while self.current().kind != TokenKind::Eof {
+            match self.previous().kind {
+                TokenKind::SemiColon if scope_count == 0 => return,
+                TokenKind::OpenBrace => scope_count += 1,
+                TokenKind::CloseBrace => {
+                    scope_count -= 1;
+                    if scope_count <= 0 {
+                        self.check(TokenKind::SemiColon);
+                        return;
+                    }
+                }
+                _ => (),
+            }
+
+            match self.current().kind {
+                TokenKind::While | TokenKind::For | TokenKind::If | TokenKind::Return => return,
+                _ => (),
+            }
+
+            self.advance();
+        }
     }
 
     pub fn advance(&mut self) {
         self.previous = Some(self.current);
 
-        self.current = self.lexer.next_token();
+        self.current = loop {
+            let token = self.lexer.next_token();
+
+            if let Some(token) = token {
+                break token;
+            }
+
+            self.error_bad_token("unrecognised token");
+        };
     }
 
-    pub fn consume(&mut self, kind: TokenKind) {
+    pub fn consume(&mut self, kind: TokenKind, error_message: &str) {
         if self.current.kind != kind {
-            panic!("Expected {:?}", kind)
+            self.error_bad_token(error_message);
         }
 
         self.advance();
@@ -160,7 +262,7 @@ impl Compiler {
         let token = self.parser.previous();
         let value: f64 = self.parser.lexer.get_token_string(&token).parse().unwrap();
         if value != value.round() {
-            panic!("Number must be an integer");
+            self.parser.error("Number must be an integer");
         }
         self.chunk_mut().push_constant(Value::float(value))
     }
@@ -179,11 +281,12 @@ impl Compiler {
         self.chunk_mut().push_constant(Value::obj(obj));
     }
 
-    fn resolve_local(&self, name: &str) -> Option<u8> {
+    fn resolve_local(&mut self, name: &str) -> Option<u8> {
         for (i, local) in self.locals().iter().enumerate().rev() {
             if name == local.name {
                 if local.depth.is_none() {
-                    panic!("Can't reference local in its own initialiser");
+                    self.parser
+                        .error("Can't reference local in its own initialiser");
                 }
 
                 return Some(i as u8);
@@ -195,11 +298,12 @@ impl Compiler {
 
     fn identifier(&mut self) {
         let (get_op, set_op);
-        let name = &self
+        let name = self
             .parser
             .previous()
-            .lexeme_str(self.parser.lexer.program());
-        let mut arg = self.resolve_local(name);
+            .lexeme_str(self.parser.lexer.program())
+            .to_owned();
+        let mut arg = self.resolve_local(&name);
 
         match arg {
             Some(_) => {
@@ -207,7 +311,7 @@ impl Compiler {
                 set_op = OpCode::SetLocal;
             }
             None => {
-                arg = Some(self.vm.globals.get_global_idx(name));
+                arg = Some(self.vm.globals.get_global_idx(&name));
                 get_op = OpCode::GetGlobal;
                 set_op = OpCode::SetGlobal;
             }
@@ -225,7 +329,10 @@ impl Compiler {
 
     fn map_access(&mut self) {
         self.expression();
-        self.parser.consume(TokenKind::Op(OpKind::CloseSquare));
+        self.parser.consume(
+            TokenKind::Op(OpKind::CloseSquare),
+            "expected ']' after map access",
+        );
 
         if self.parser.check(TokenKind::Op(OpKind::Equal)) {
             #[cfg(feature = "local_map_scopes")]
@@ -244,14 +351,17 @@ impl Compiler {
         self.push_fn();
         self.begin_scope();
 
-        self.parser.consume(TokenKind::Op(OpKind::OpenParen));
+        self.parser.consume(
+            TokenKind::Op(OpKind::OpenParen),
+            "expected '(' to enclose arguments in function definition",
+        );
         if !self.parser.compare_next(TokenKind::Op(OpKind::CloseParen)) {
             loop {
                 self.current().arity += 1;
                 if self.current().arity > 255 {
-                    panic!("Can't have more than 255 parameters");
+                    self.parser.error("Can't have more than 255 parameters");
                 }
-                self.parse_variable("Expected parameter");
+                self.parse_variable("expected parameter");
                 self.mark_initialised();
 
                 if !self.parser.check(TokenKind::Comma) {
@@ -259,8 +369,12 @@ impl Compiler {
                 }
             }
         }
-        self.parser.consume(TokenKind::Op(OpKind::CloseParen));
-        self.parser.consume(TokenKind::OpenBrace);
+        self.parser.consume(
+            TokenKind::Op(OpKind::CloseParen),
+            "expected ')' after function arguments",
+        );
+        self.parser
+            .consume(TokenKind::OpenBrace, "expected '{' after arguments");
         self.block();
 
         #[cfg(feature = "local_map_scopes")]
@@ -273,7 +387,7 @@ impl Compiler {
         if !self.parser.compare_next(TokenKind::Op(OpKind::CloseParen)) {
             loop {
                 if arg_count == u8::MAX {
-                    panic!("Can't have more than 255 arguments");
+                    self.parser.error("Can't have more than 255 arguments");
                 }
                 arg_count += 1;
 
@@ -284,19 +398,22 @@ impl Compiler {
                 }
             }
         }
-        self.parser.consume(TokenKind::Op(OpKind::CloseParen));
+        self.parser.consume(
+            TokenKind::Op(OpKind::CloseParen),
+            "expected ')' after arguments to function call",
+        );
 
         self.chunk_mut().push_opcode(OpCode::Call);
         self.chunk_mut().push_byte(arg_count);
     }
 
     fn expression_bp(&mut self, min_bp: u8) {
-        fn prefix_bp(op: OpKind) -> ((), u8) {
-            match op {
+        fn prefix_bp(op: OpKind) -> Option<((), u8)> {
+            Some(match op {
                 OpKind::Bang => ((), 15),
                 OpKind::Minus => ((), 15),
-                _ => panic!("Can't use {:?} here", op),
-            }
+                _ => return None,
+            })
         }
 
         fn infix_bp(op: OpKind) -> Option<(u8, u8)> {
@@ -339,16 +456,29 @@ impl Compiler {
                 assert!(self.parser.check(TokenKind::Op(OpKind::CloseParen)));
             }
             TokenKind::Op(op) => {
-                let ((), r_bp) = prefix_bp(op);
-                self.expression_bp(r_bp);
+                if let Some(((), r_bp)) = prefix_bp(op) {
+                    self.expression_bp(r_bp);
 
-                match op {
-                    OpKind::Bang => self.chunk_mut().push_opcode(OpCode::Not),
-                    OpKind::Minus => self.chunk_mut().push_opcode(OpCode::Negate),
-                    _ => unreachable!("Error handled in prefix_bp call"),
+                    match op {
+                        OpKind::Bang => self.chunk_mut().push_opcode(OpCode::Not),
+                        OpKind::Minus => self.chunk_mut().push_opcode(OpCode::Negate),
+                        _ => unreachable!("Non prefix operator returned from prefix_bp"),
+                    }
+                } else {
+                    self.parser.error(&format!(
+                        "'{}' is not a prefix operator",
+                        self.parser
+                            .previous()
+                            .lexeme_str(self.parser.lexer.program())
+                    ))
                 }
             }
-            token => panic!("Unexpected token: {:?}", token),
+            _ => self.parser.error(&format!(
+                "'{}' can't be used in an expression",
+                self.parser
+                    .previous()
+                    .lexeme_str(self.parser.lexer.program())
+            )),
         }
 
         while let TokenKind::Op(op) = self.parser.current().kind {
@@ -360,7 +490,7 @@ impl Compiler {
 
                 match op {
                     OpKind::OpenSquare => self.map_access(),
-                    _ => panic!("{:?} is not a postfix operator", op),
+                    _ => unreachable!("{:?} not handled", op),
                 }
             }
 
@@ -400,7 +530,7 @@ impl Compiler {
                     OpKind::GreaterEqual => self.chunk_mut().push_opcode(OpCode::GreaterEqual),
                     OpKind::Less => self.chunk_mut().push_opcode(OpCode::Less),
                     OpKind::LessEqual => self.chunk_mut().push_opcode(OpCode::LessEqual),
-                    token => panic!("Unexpected token: {:?}", token),
+                    _ => unreachable!("{:?} not handled", op),
                 }
 
                 continue;
@@ -416,13 +546,14 @@ impl Compiler {
 
     fn expression_statement(&mut self) {
         self.expression();
-        self.parser.consume(TokenKind::SemiColon);
+        self.parser
+            .consume(TokenKind::SemiColon, "expected ';' after expression");
         self.chunk_mut().push_opcode(OpCode::Pop);
     }
 
     fn return_statement(&mut self) {
         if !self.function_stack.last().unwrap().is_function {
-            panic!("Can only return from functions");
+            self.parser.error("can't use return when not in a function");
         }
 
         if self.parser.compare_next(TokenKind::SemiColon) {
@@ -431,7 +562,8 @@ impl Compiler {
             self.expression();
         }
         self.chunk_mut().push_opcode(OpCode::Return);
-        self.parser.consume(TokenKind::SemiColon);
+        self.parser
+            .consume(TokenKind::SemiColon, "expected ';' after return statement");
     }
 
     #[cfg(feature = "local_map_scopes")]
@@ -489,12 +621,14 @@ impl Compiler {
             self.statement();
         }
 
-        self.parser.consume(TokenKind::CloseBrace)
+        self.parser
+            .consume(TokenKind::CloseBrace, "expected '}' after block");
     }
 
     fn add_local(&mut self, name: String) {
         if self.locals().len() == 256 {
-            panic!("Too many local variables");
+            self.parser
+                .error("can't have more than 256 local variables per function");
         }
 
         self.locals_mut().push(Local { name, depth: None });
@@ -508,23 +642,34 @@ impl Compiler {
         let name = self
             .parser
             .previous()
-            .lexeme_str(self.parser.lexer.program());
+            .lexeme_str(self.parser.lexer.program())
+            .to_owned();
 
+        let mut had_error = false;
         for local in self.locals().iter().rev() {
             if local.depth.unwrap() < self.scope_depth() {
                 break;
             }
 
             if name == local.name {
-                panic!("Already a variable with this name in this scope.");
+                had_error = true;
             }
+        }
+        if had_error {
+            self.parser.error(&format!(
+                "there is already a variable with name '{}' in this scope",
+                self.parser
+                    .previous()
+                    .lexeme_str(self.parser.lexer.program())
+            ));
         }
 
         self.add_local(name.to_owned());
     }
 
     fn parse_variable(&mut self, error_message: &str) -> u8 {
-        self.parser.consume(TokenKind::Atom(AtomKind::Ident));
+        self.parser
+            .consume(TokenKind::Atom(AtomKind::Ident), error_message);
 
         self.declare_variable();
         if self.scope_depth() > 0 {
@@ -554,7 +699,7 @@ impl Compiler {
     }
 
     fn var_decl(&mut self) {
-        let global_idx = self.parse_variable("Expect variable name");
+        let global_idx = self.parse_variable("expected variable name");
 
         if self.parser.check(TokenKind::Op(OpKind::Equal)) {
             self.expression();
@@ -562,21 +707,26 @@ impl Compiler {
             self.chunk_mut().push_opcode(OpCode::Null);
         }
 
-        self.parser.consume(TokenKind::SemiColon);
+        self.parser.consume(
+            TokenKind::SemiColon,
+            "expected ';' after variable declaration",
+        );
 
         self.define_variable(global_idx);
     }
 
     fn if_statement(&mut self) {
         self.expression();
-        self.parser.consume(TokenKind::OpenBrace);
+        self.parser
+            .consume(TokenKind::OpenBrace, "expected '{' after condition");
         let jump = self.chunk_mut().push_jump(OpCode::JumpIfFalse);
 
         self.block();
         if self.parser.check(TokenKind::Else) {
             let else_jump = self.chunk_mut().push_jump(OpCode::Jump);
             self.chunk_mut().patch_jump(jump);
-            self.parser.consume(TokenKind::OpenBrace);
+            self.parser
+                .consume(TokenKind::OpenBrace, "expected '{' after else");
             self.block();
             self.chunk_mut().patch_jump(else_jump);
         } else {
@@ -586,11 +736,18 @@ impl Compiler {
 
     fn for_loop(&mut self) {
         self.begin_scope();
-        self.parser.consume(TokenKind::Atom(AtomKind::Ident));
+        self.parser.consume(
+            TokenKind::Atom(AtomKind::Ident),
+            "expected loop variable name",
+        );
         self.declare_variable();
 
-        self.parser.consume(TokenKind::In);
-        self.parser.consume(TokenKind::Atom(AtomKind::Number));
+        self.parser
+            .consume(TokenKind::In, "expected 'in' after loop variable");
+        self.parser.consume(
+            TokenKind::Atom(AtomKind::Number),
+            "expected number for start of range",
+        );
         self.integer();
         self.mark_initialised();
 
@@ -600,21 +757,26 @@ impl Compiler {
         self.chunk_mut().push_opcode(OpCode::GetLocal);
         self.chunk_mut().push_byte(var_idx);
 
-        let op;
-        if self.parser.check(TokenKind::Op(OpKind::Greater)) {
-            op = OpCode::Less;
+        let op = if self.parser.check(TokenKind::Op(OpKind::Greater)) {
+            OpCode::Less
         } else if self.parser.check(TokenKind::Op(OpKind::GreaterEqual)) {
-            op = OpCode::LessEqual;
+            OpCode::LessEqual
         } else {
-            panic!("Must use either '>' or '>=' in for loop");
-        }
+            self.parser
+                .error("must use either '>' or '>=' in for loop range");
+            return;
+        };
 
-        self.parser.consume(TokenKind::Atom(AtomKind::Number));
+        self.parser.consume(
+            TokenKind::Atom(AtomKind::Number),
+            "expected number for end of range",
+        );
         self.integer();
         self.chunk_mut().push_opcode(op);
         let jump = self.chunk_mut().push_jump(OpCode::JumpIfFalse);
 
-        self.parser.consume(TokenKind::OpenBrace);
+        self.parser
+            .consume(TokenKind::OpenBrace, "expected '{' after range");
         self.block();
 
         self.chunk_mut().push_opcode(OpCode::GetLocal);
@@ -636,7 +798,8 @@ impl Compiler {
 
         let jump = self.chunk_mut().push_jump(OpCode::JumpIfFalse);
 
-        self.parser.consume(TokenKind::OpenBrace);
+        self.parser
+            .consume(TokenKind::OpenBrace, "expected '{' after condition");
         self.begin_scope();
         self.block();
         self.end_scope();
@@ -664,6 +827,10 @@ impl Compiler {
         } else {
             self.expression_statement();
         }
+
+        if self.parser.handling_error {
+            self.parser.sync();
+        }
     }
 
     fn define_native(&mut self, name: &str, native: NativeFn) {
@@ -690,6 +857,10 @@ impl Compiler {
 
         #[cfg(feature = "decompile")]
         self.chunk_mut().disassemble();
+
+        if self.parser.had_error {
+            std::process::exit(101);
+        }
 
         let function = self.function_stack.pop().unwrap().function;
         let function = self.vm.alloc(function);

@@ -180,10 +180,8 @@ impl VM {
 
         macro_rules! stack_peek {
             ($pos:expr) => {
-                unsafe {
-                    sp.sub($pos + 1).read()
-                }
-            }
+                unsafe { sp.sub($pos + 1).read() }
+            };
         }
 
         macro_rules! binary_op {
@@ -252,7 +250,9 @@ impl VM {
                     stack_push!(value);
                 }
                 Op::LoadConstantExt => {
-                    let idx = ((next_byte!() as usize) << 16) | ((next_byte!() as usize) << 8) | next_byte!() as usize;
+                    let idx = ((next_byte!() as usize) << 16)
+                        | ((next_byte!() as usize) << 8)
+                        | next_byte!() as usize;
                     let value = unsafe { (*self.frame().function.function).chunk.constants[idx] };
                     stack_push!(value);
                 }
@@ -337,7 +337,7 @@ impl VM {
                     let offset = next_byte!() as usize;
                     let fp_offset = self.frame().fp_offset;
                     stack_push!(self.stack.base().add(offset + fp_offset).read());
-                },
+                }
                 Op::SetLocal => unsafe {
                     self.stack
                         .base_mut()

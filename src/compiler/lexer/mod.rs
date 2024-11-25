@@ -7,6 +7,7 @@ pub struct Lexer {
     start: usize,
     position: usize,
     line: u32,
+    pub lines: Vec<usize>,
 }
 
 impl Lexer {
@@ -16,6 +17,7 @@ impl Lexer {
             start: 0,
             position: 0,
             line: 1,
+            lines: vec![0],
         }
     }
 
@@ -36,7 +38,11 @@ impl Lexer {
     }
 
     fn peek(&mut self) -> char {
-        self.program[self.position..].chars().next().unwrap_or('\0')
+        self.program
+            .as_bytes()
+            .get(self.position)
+            .copied()
+            .unwrap_or(b'\0') as char
     }
 
     fn advance(&mut self) -> char {
@@ -54,8 +60,8 @@ impl Lexer {
         }
     }
 
-    fn make_token(&mut self, kind: TokenKind) -> Token {
-        Token::new(kind, self.line, self.start, self.position)
+    fn make_token(&mut self, kind: TokenKind) -> Option<Token> {
+        Some(Token::new(kind, self.line, self.start, self.position))
     }
 
     fn identifier_type(&self) -> TokenKind {
@@ -92,7 +98,7 @@ impl Lexer {
         }
     }
 
-    fn identifier(&mut self) -> Token {
+    fn identifier(&mut self) -> Option<Token> {
         while Self::is_alphanumeric(self.peek()) {
             self.advance();
         }
@@ -100,7 +106,7 @@ impl Lexer {
         self.make_token(self.identifier_type())
     }
 
-    fn number(&mut self) -> Token {
+    fn number(&mut self) -> Option<Token> {
         while Self::is_numeric(self.peek()) {
             self.advance();
         }
@@ -114,7 +120,7 @@ impl Lexer {
         self.make_token(TokenKind::Atom(AtomKind::Number))
     }
 
-    fn string(&mut self) -> Token {
+    fn string(&mut self) -> Option<Token> {
         while self.peek() != '"' {
             if self.advance() == '\n' {
                 self.line += 1;
@@ -125,7 +131,7 @@ impl Lexer {
         self.make_token(TokenKind::Atom(AtomKind::String))
     }
 
-    pub fn next_token(&mut self) -> Token {
+    pub fn next_token(&mut self) -> Option<Token> {
         loop {
             self.start = self.position;
             match self.advance() {
@@ -196,10 +202,11 @@ impl Lexer {
                 ',' => return self.make_token(TokenKind::Comma),
                 '\n' => {
                     self.line += 1;
+                    self.lines.push(self.position);
                 }
                 '\0' => return self.make_token(TokenKind::Eof),
                 c if c.is_whitespace() => (),
-                _ => panic!("Unrecognised token"),
+                _ => return None,
             }
         }
     }
