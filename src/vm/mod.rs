@@ -25,6 +25,8 @@ pub struct VM {
     pub globals: Globals,
 }
 
+// using format! rather than to_string measurably improves performance
+#[allow(clippy::useless_format)]
 impl VM {
     pub fn new() -> Self {
         VM {
@@ -37,7 +39,7 @@ impl VM {
     }
 
     #[cold]
-    fn runtime_error(&self, ip: *const u8, message: &str) {
+    fn runtime_error(&self, ip: *const u8, message: String) {
         // sleep encourages the compiler to avoid this branch because it seems more expensive
         // this results in a small but measurable increase in performance when there are no errors
         std::thread::sleep(std::time::Duration::from_millis(10));
@@ -89,7 +91,7 @@ impl VM {
         if arg_count as u32 != arity {
             self.runtime_error(
                 unsafe { (*self.frame_top).ip },
-                &format!("expected {arity} arguments but got {arg_count}"),
+                format!("expected {arity} arguments but got {arg_count}"),
             );
         }
 
@@ -108,11 +110,11 @@ impl VM {
                     self.stack.top = unsafe { self.stack.top.sub(arg_count as usize + 1) };
                     self.stack.push(result);
                 }
-                _ => self.runtime_error(unsafe { (*self.frame_top).ip }, "can only call functions"),
+                _ => self.runtime_error(unsafe { (*self.frame_top).ip }, format!("can only call functions")),
             }
             return;
         }
-        self.runtime_error(unsafe { (*self.frame_top).ip }, "can only call functions");
+        self.runtime_error(unsafe { (*self.frame_top).ip }, format!("can only call functions"));
     }
 
     pub fn push_call_frame(&mut self, function: Obj) {
@@ -206,7 +208,7 @@ impl VM {
                     let a = stack_pop!();
 
                     if !a.is_float() || !b.is_float() {
-                        self.runtime_error(ip, "can only do arithmetic operations on floats");
+                        self.runtime_error(ip, format!("can only do arithmetic operations on floats"));
                     }
 
                     stack_push!(Value::float(a.as_float() $op b.as_float()));
@@ -232,7 +234,7 @@ impl VM {
                     let a = stack_pop!();
 
                     if !a.is_float() || !b.is_float() {
-                        self.runtime_error(ip, "can only compare floats");
+                        self.runtime_error(ip, format!("can only compare floats"));
                     }
 
                     stack_push!(Value::bool(a.as_float() $op b.as_float()));
@@ -294,7 +296,7 @@ impl VM {
                         let obj = self.alloc(obj);
                         stack_push!(Value::obj(obj))
                     } else {
-                        self.runtime_error(ip, "can only add strings and floats");
+                        self.runtime_error(ip, format!("can only add strings and floats"));
                     }
                 }
                 Op::Sub => binary_op!(-),
@@ -308,7 +310,7 @@ impl VM {
                 Op::LessEqual => comparison_op!(<=),
                 Op::Negate => {
                     if !stack_peek!(0).is_float() {
-                        self.runtime_error(ip, "can only negate numbers");
+                        self.runtime_error(ip, format!("can only negate numbers"));
                     }
                     unsafe {
                         let top_ptr = sp.sub(1);
@@ -317,7 +319,7 @@ impl VM {
                 }
                 Op::Not => {
                     if !stack_peek!(0).is_bool() {
-                        self.runtime_error(ip, "can only not boolean values");
+                        self.runtime_error(ip, format!("can only not boolean values"));
                     }
                     unsafe {
                         let top_ptr = sp.sub(1);
@@ -333,7 +335,7 @@ impl VM {
                     let value = self.globals.get(idx);
 
                     if value.is_undef() {
-                        self.runtime_error(ip, "attempted to get value of undefined variable");
+                        self.runtime_error(ip, format!("attempted to get value of undefined variable"));
                     }
 
                     stack_push!(value);
@@ -343,7 +345,7 @@ impl VM {
                     let prev_value = self.globals.get(idx);
 
                     if prev_value.is_undef() {
-                        self.runtime_error(ip, "attemped to set value of undefined variable");
+                        self.runtime_error(ip, format!("attemped to set value of undefined variable"));
                     }
 
                     self.globals.set(idx, stack_peek!(0));
@@ -380,7 +382,7 @@ impl VM {
                         }
                     }
 
-                    self.runtime_error(ip, "key not found");
+                    self.runtime_error(ip, format!("key not found"));
                 }
                 Op::SetMap => {
                     let value = stack_pop!();
