@@ -36,6 +36,18 @@ impl VM {
         }
     }
 
+    #[cold]
+    fn runtime_error(&self, ip: *const u8, message: &str) {
+        // sleep encourages the compiler to avoid this branch because it seems more expensive
+        // this results in a small but measurable increase in performance when there are no errors
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let chunk = unsafe { &(*(*self.frame_top).function.function).chunk };
+        let offset = unsafe { ip.offset_from(chunk.code_ptr()) };
+        let line = chunk.lines[offset as usize];
+        eprintln!("\x1b[91merror\x1b[0m on line {line}: {message}");
+        std::process::exit(101);
+    }
+
     pub fn alloc<T>(&mut self, obj: impl GCAlloc<T>) -> Obj {
         self.run_gc();
         self.gc.alloc(obj)
@@ -75,7 +87,10 @@ impl VM {
     pub fn call(&mut self, function: Obj, arg_count: u8) {
         let arity = unsafe { (*function.function).arity };
         if arg_count as u32 != arity {
-            panic!("Expected {arity} arguments but got {arg_count}");
+            self.runtime_error(
+                unsafe { (*self.frame_top).ip },
+                &format!("expected {arity} arguments but got {arg_count}"),
+            );
         }
 
         self.push_call_frame(function);
@@ -93,11 +108,11 @@ impl VM {
                     self.stack.top = unsafe { self.stack.top.sub(arg_count as usize + 1) };
                     self.stack.push(result);
                 }
-                _ => panic!("Can only call functions"),
+                _ => self.runtime_error(unsafe { (*self.frame_top).ip }, "can only call functions"),
             }
             return;
         }
-        panic!("Can only call functions");
+        self.runtime_error(unsafe { (*self.frame_top).ip }, "can only call functions");
     }
 
     pub fn push_call_frame(&mut self, function: Obj) {
@@ -105,14 +120,14 @@ impl VM {
             .allocate_slots(unsafe { (*function.function).stack_effect });
         self.frames
             .push(CallFrame::new(function, self.stack.top, self.stack.base()));
-        self.frame_top = self.frames.last_mut().unwrap() as *mut CallFrame;
+        self.frame_top = unsafe { self.frames.last_mut().unwrap_unchecked() as *mut CallFrame };
     }
 
     pub fn pop_call_frame(&mut self) -> CallFrame {
-        let function = self.frames.pop().unwrap();
+        let function = unsafe { self.frames.pop().unwrap_unchecked() };
         self.stack
             .free_slots(unsafe { (*function.function.function).stack_effect });
-        self.frame_top = self.frames.last_mut().unwrap() as *mut CallFrame;
+        self.frame_top = unsafe { self.frames.last_mut().unwrap_unchecked() as *mut CallFrame };
         function
     }
 
@@ -191,7 +206,7 @@ impl VM {
                     let a = stack_pop!();
 
                     if !a.is_float() || !b.is_float() {
-                        panic!("Can only do arithmetic operations on floats");
+                        self.runtime_error(ip, "can only do arithmetic operations on floats");
                     }
 
                     stack_push!(Value::float(a.as_float() $op b.as_float()));
@@ -217,7 +232,7 @@ impl VM {
                     let a = stack_pop!();
 
                     if !a.is_float() || !b.is_float() {
-                        panic!("Can only compare floats");
+                        self.runtime_error(ip, "can only compare floats");
                     }
 
                     stack_push!(Value::bool(a.as_float() $op b.as_float()));
@@ -279,7 +294,7 @@ impl VM {
                         let obj = self.alloc(obj);
                         stack_push!(Value::obj(obj))
                     } else {
-                        panic!("Can only add strings and floats");
+                        self.runtime_error(ip, "can only add strings and floats");
                     }
                 }
                 Op::Sub => binary_op!(-),
@@ -293,7 +308,7 @@ impl VM {
                 Op::LessEqual => comparison_op!(<=),
                 Op::Negate => {
                     if !stack_peek!(0).is_float() {
-                        panic!("Can only negate numbers");
+                        self.runtime_error(ip, "can only negate numbers");
                     }
                     unsafe {
                         let top_ptr = sp.sub(1);
@@ -302,7 +317,7 @@ impl VM {
                 }
                 Op::Not => {
                     if !stack_peek!(0).is_bool() {
-                        panic!("Can only not boolean values");
+                        self.runtime_error(ip, "can only not boolean values");
                     }
                     unsafe {
                         let top_ptr = sp.sub(1);
@@ -318,7 +333,7 @@ impl VM {
                     let value = self.globals.get(idx);
 
                     if value.is_undef() {
-                        panic!("Attempted to get value of undefined variable");
+                        self.runtime_error(ip, "attempted to get value of undefined variable");
                     }
 
                     stack_push!(value);
@@ -328,7 +343,7 @@ impl VM {
                     let prev_value = self.globals.get(idx);
 
                     if prev_value.is_undef() {
-                        panic!("Attemped to set value of undefined variable");
+                        self.runtime_error(ip, "attemped to set value of undefined variable");
                     }
 
                     self.globals.set(idx, stack_peek!(0));
@@ -365,7 +380,7 @@ impl VM {
                         }
                     }
 
-                    panic!("Key not found");
+                    self.runtime_error(ip, "key not found");
                 }
                 Op::SetMap => {
                     let value = stack_pop!();

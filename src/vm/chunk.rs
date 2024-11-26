@@ -42,6 +42,7 @@ pub enum OpCode {
 pub struct Chunk {
     code: Vec<u8>,
     pub constants: Vec<Value>,
+    pub lines: Vec<u32>,
 }
 
 impl Chunk {
@@ -49,6 +50,7 @@ impl Chunk {
         Self {
             code: Vec::new(),
             constants: Vec::new(),
+            lines: Vec::new(),
         }
     }
 
@@ -66,34 +68,9 @@ impl Chunk {
         self.push_opcode(OpCode::PopMap);
     }
 
-    fn add_constant(&mut self, constant: Value) -> usize {
+    pub fn add_constant(&mut self, constant: Value) -> usize {
         self.constants.push(constant);
         self.constants.len() - 1
-    }
-
-    pub fn push_constant(&mut self, constant: Value) {
-        let idx = self.add_constant(constant);
-        if idx <= u8::MAX as usize {
-            self.push_opcode(OpCode::LoadConstant);
-            self.push_byte(idx as u8);
-        } else {
-            self.push_opcode(OpCode::LoadConstantExt);
-            self.push_byte(((idx >> 16) & 0xFF) as u8);
-            self.push_byte(((idx >> 8) & 0xFF) as u8);
-            self.push_byte((idx & 0xFF) as u8);
-        }
-    }
-
-    pub fn push_jump(&mut self, opcode: OpCode) -> usize {
-        self.push_opcode(opcode);
-        self.push_byte(0xFF);
-        self.jump_target() - 1
-    }
-
-    pub fn push_loop(&mut self, target: usize) {
-        let offset = (target as isize - self.code.len() as isize - 2) as u8;
-        self.push_opcode(OpCode::Jump);
-        self.push_byte(offset);
     }
 
     pub fn patch_jump(&mut self, jump_idx: usize) {
@@ -105,12 +82,9 @@ impl Chunk {
         self.code.len()
     }
 
-    pub fn push_opcode(&mut self, opcode: OpCode) {
-        self.push_byte(opcode as u8);
-    }
-
-    pub fn push_byte(&mut self, byte: u8) {
+    pub fn push_byte(&mut self, byte: u8, line: u32) {
         self.code.push(byte);
+        self.lines.push(line);
     }
 
     #[cfg(any(feature = "decompile", feature = "trace_execution"))]

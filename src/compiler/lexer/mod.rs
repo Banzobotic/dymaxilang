@@ -125,7 +125,7 @@ impl Lexer {
             if self.peek() == '\0' {
                 return Err("string not closed".to_owned());
             }
-            
+
             if self.advance() == '\n' {
                 self.line += 1;
             }
@@ -181,14 +181,14 @@ impl Lexer {
                 }
                 '&' => {
                     if self.advance() != '&' {
-                        panic!("Use '&&' not '&'");
+                        return Err("use '&&' not '&'".to_owned());
                     }
 
                     return self.make_token(TokenKind::Op(OpKind::And));
                 }
                 '|' => {
                     if self.advance() != '|' {
-                        panic!("Use '||' not '|'");
+                        return Err("use '||' not '|'".to_owned());
                     }
 
                     return self.make_token(TokenKind::Op(OpKind::Or));
