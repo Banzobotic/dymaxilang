@@ -231,13 +231,20 @@ impl Compiler {
     pub fn push_jump(&mut self, opcode: OpCode) -> usize {
         self.push_opcode(opcode);
         self.push_byte(0xFF);
-        self.chunk().jump_target() - 1
+        self.push_byte(0xFF);
+        self.chunk().jump_target() - 2
     }
 
     pub fn push_loop(&mut self, target: usize) {
-        let offset = (target as isize - self.chunk().jump_target() as isize - 2) as u8;
-        self.push_opcode(OpCode::Jump);
-        self.push_byte(offset);
+        let offset = self.chunk().jump_target() - target + 3;
+
+        if offset > u16::MAX as usize {
+            self.parser.error("loop too long");
+        }
+        
+        self.push_opcode(OpCode::JumpUp);
+        self.push_byte((offset >> 8) as u8);
+        self.push_byte((offset & 0xFF) as u8)
     }
 
     fn push_opcode(&mut self, op: OpCode) {

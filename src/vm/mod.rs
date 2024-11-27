@@ -164,7 +164,7 @@ impl VM {
         macro_rules! jump {
             ($offset:expr) => {
                 unsafe {
-                    ip = ip.offset($offset as i8 as isize);
+                    ip = ip.add($offset);
                 }
             };
         }
@@ -248,7 +248,7 @@ impl VM {
             #[cfg(feature = "trace_execution")]
             {
                 let mut stack_ptr = self.stack.base();
-                while stack_ptr != self.stack.top.as_ptr() {
+                while stack_ptr != sp.as_ptr() {
                     print!("[ {} ]", unsafe { *stack_ptr });
                     stack_ptr = unsafe { stack_ptr.add(1) };
                 }
@@ -417,26 +417,31 @@ impl VM {
                     self.frame().local_maps.pop();
                 }
                 Op::Jump => {
-                    let offset = next_byte!();
+                    let offset = (next_byte!() as usize) << 8 | next_byte!() as usize;
 
                     jump!(offset);
                 }
+                Op::JumpUp => {
+                    let offset = (next_byte!() as usize) << 8 | next_byte!() as usize;
+
+                    unsafe { ip = ip.sub(offset) }
+                }
                 Op::JumpIfFalse => {
-                    let offset = next_byte!();
+                    let offset = (next_byte!() as usize) << 8 | next_byte!() as usize;
 
                     if !stack_pop!().as_bool() {
                         jump!(offset);
                     }
                 }
                 Op::JumpIfFalseNoPop => {
-                    let offset = next_byte!();
+                    let offset = (next_byte!() as usize) << 8 | next_byte!() as usize;
 
                     if !stack_peek!(0).as_bool() {
                         jump!(offset);
                     }
                 }
                 Op::JumpIfTrueNoPop => {
-                    let offset = next_byte!();
+                    let offset = (next_byte!() as usize) << 8 | next_byte!() as usize;
 
                     if stack_peek!(0).as_bool() {
                         jump!(offset);

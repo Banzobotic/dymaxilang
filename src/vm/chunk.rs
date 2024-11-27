@@ -34,6 +34,7 @@ pub enum OpCode {
     JumpIfFalse,
     JumpIfFalseNoPop,
     JumpIfTrueNoPop,
+    JumpUp,
     Call,
     Return,
 }
@@ -74,8 +75,9 @@ impl Chunk {
     }
 
     pub fn patch_jump(&mut self, jump_idx: usize) {
-        let offset = (self.code.len() as isize - jump_idx as isize - 1) as u8;
-        self.code[jump_idx] = offset;
+        let offset = self.code.len() - jump_idx - 2;
+        self.code[jump_idx] = (offset >> 8) as u8;
+        self.code[jump_idx + 1] = (offset & 0xFF) as u8;
     }
 
     pub fn jump_target(&self) -> usize {
@@ -123,10 +125,6 @@ impl Chunk {
             | Op::SetGlobal
             | Op::GetLocal
             | Op::SetLocal
-            | Op::Jump
-            | Op::JumpIfFalse
-            | Op::JumpIfFalseNoPop
-            | Op::JumpIfTrueNoPop
             | Op::Call) => {
                 let constant = self.code[offset + 1];
                 println!("{:16} {:04X}", format!("{:?}", op), constant);
@@ -159,6 +157,15 @@ impl Chunk {
                     self.constants[idx]
                 );
                 offset + 4
+            }
+            op @ (Op::Jump
+            | Op::JumpIfFalse
+            | Op::JumpIfFalseNoPop
+            | Op::JumpIfTrueNoPop
+            | Op::JumpUp) => {
+                let jump_offset = (self.code[offset + 1] as usize) << 8 | self.code[offset + 2] as usize;
+                println!("{:16} {:04X}", format!("{:?}", op), jump_offset);
+                offset + 3
             }
         }
     }
