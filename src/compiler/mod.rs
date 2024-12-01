@@ -169,6 +169,7 @@ impl Parser {
     }
 }
 
+#[derive(Debug)]
 struct Local {
     name: String,
     depth: Option<u32>,
@@ -646,7 +647,7 @@ impl Compiler {
     }
 
     fn end_scope(&mut self) {
-        self.function_stack.last_mut().unwrap().scope_depth += 1;
+        self.function_stack.last_mut().unwrap().scope_depth -= 1;
 
         while let Some(local) = self.locals().last() {
             if local.depth.unwrap() <= self.scope_depth() {
@@ -769,13 +770,18 @@ impl Compiler {
             .consume(TokenKind::OpenBrace, "expected '{' after condition");
         let jump = self.push_jump(OpCode::JumpIfFalse);
 
+        self.begin_scope();
         self.block();
+        self.end_scope();
+
         if self.parser.check(TokenKind::Else) {
             let else_jump = self.push_jump(OpCode::Jump);
             self.chunk_mut().patch_jump(jump);
             self.parser
                 .consume(TokenKind::OpenBrace, "expected '{' after else");
+            self.begin_scope();
             self.block();
+            self.end_scope();
             self.chunk_mut().patch_jump(else_jump);
         } else {
             self.chunk_mut().patch_jump(jump);
@@ -800,6 +806,8 @@ impl Compiler {
         self.mark_initialised();
 
         let start = self.chunk_mut().jump_target();
+
+        self.begin_scope();
 
         let var_idx = (self.locals().len() - 1) as u8;
         self.push_opcode(OpCode::GetLocal);
@@ -834,6 +842,7 @@ impl Compiler {
         self.push_opcode(OpCode::SetLocal);
         self.push_byte(var_idx);
         self.push_opcode(OpCode::Pop);
+        self.end_scope();
 
         self.push_loop(start);
         self.chunk_mut().patch_jump(jump);
