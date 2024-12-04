@@ -316,7 +316,7 @@ impl Compiler {
         let token = self.parser.previous();
         let value: f64 = self.parser.lexer.get_token_string(&token).parse().unwrap();
         if value != value.round() {
-            self.parser.error("Number must be an integer");
+            self.parser.error("number must be an integer");
         }
         self.push_constant(Value::float(value))
     }
@@ -344,7 +344,7 @@ impl Compiler {
             if name == local.name {
                 if local.depth.is_none() {
                     self.parser
-                        .error("Can't reference local in its own initialiser");
+                        .error("can't reference local in its own initialiser");
                 }
 
                 return Some(i as u8);
@@ -417,7 +417,7 @@ impl Compiler {
             loop {
                 self.current().arity += 1;
                 if self.current().arity > 255 {
-                    self.parser.error("Can't have more than 255 parameters");
+                    self.parser.error("can't have more than 255 parameters");
                 }
                 self.parse_variable("expected parameter");
                 self.mark_initialised();
@@ -445,7 +445,7 @@ impl Compiler {
         if !self.parser.compare_next(TokenKind::Op(OpKind::CloseParen)) {
             loop {
                 if arg_count == u8::MAX {
-                    self.parser.error("Can't have more than 255 arguments");
+                    self.parser.error("can't have more than 255 arguments");
                 }
                 arg_count += 1;
 
@@ -790,11 +790,13 @@ impl Compiler {
 
         self.parser
             .consume(TokenKind::In, "expected 'in' after loop variable");
-        self.parser.consume(
-            TokenKind::Atom(AtomKind::Number),
-            "expected number for start of range",
-        );
-        self.integer();
+        if self.parser.check(TokenKind::Atom(AtomKind::Number)) {
+            self.integer();
+        } else if self.parser.check(TokenKind::Atom(AtomKind::Ident)) {
+            self.identifier();
+        } else {
+            self.parser.error("expected either integer or identifer for start of range");
+        }
         self.mark_initialised();
 
         let start = self.chunk_mut().jump_target();
@@ -815,11 +817,13 @@ impl Compiler {
             return;
         };
 
-        self.parser.consume(
-            TokenKind::Atom(AtomKind::Number),
-            "expected number for end of range",
-        );
-        self.integer();
+        if self.parser.check(TokenKind::Atom(AtomKind::Number)) {
+            self.integer();
+        } else if self.parser.check(TokenKind::Atom(AtomKind::Ident)) {
+            self.identifier();
+        } else {
+            self.parser.error("expected either integer or identifer for end of range");
+        }
         self.push_opcode(op);
         let jump = self.push_jump(OpCode::JumpIfFalse);
 
@@ -899,6 +903,8 @@ impl Compiler {
         self.define_native("abs", native_abs);
         self.define_native("split", native_split);
         self.define_native("split_into", native_split_into);
+        self.define_native("chars", native_chars);
+        self.define_native("chars_into", native_chars_into);
         self.define_native("sort", native_sort);
     }
 

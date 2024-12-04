@@ -135,6 +135,50 @@ pub fn split_impl(args: NonNull<Value>, vm: *mut VM, key: Value, whitespace: boo
     }
 }
 
+pub fn native_chars(arg_count: u32, args: NonNull<Value>, vm: *mut VM) -> Value {
+    unsafe {
+        if arg_count != 1 {
+            (*vm).runtime_error((*vm).frame().ip, format!("expected 1 argument but got {arg_count}"));
+        }
+        let key = {
+            let obj = ObjString::new("chars");
+            let obj = (*vm).alloc(obj);
+            Value::obj(obj)
+        };
+        chars_impl(args, vm, key)
+    }
+}
+
+pub fn native_chars_into(arg_count: u32, args: NonNull<Value>, vm: *mut VM) -> Value {
+    unsafe {
+        if arg_count != 2 {
+            (*vm).runtime_error((*vm).frame().ip, format!("expected 2 arguments but got {arg_count}"));
+        }
+        let key = args.add(1).read();
+        chars_impl(args, vm, key)
+    }
+}
+
+pub fn chars_impl(args: NonNull<Value>, vm: *mut VM, key: Value) -> Value {
+    unsafe {
+        let value = args.read();
+        if !value.is_string() {
+            (*vm).runtime_error((*vm).frame().ip, format!("can only split strings"));
+        }
+        let str = (*value.as_obj().string).value.as_ref();
+
+        let mut count = 0.0;
+        for x in str.chars() {
+            let obj = ObjString::new(&x.to_string());
+            let obj = (*vm).alloc(obj);
+            (*vm).globals.global_map.entry(key).or_default().insert(Value::float(count), Value::obj(obj));
+            count += 1.0;
+        }
+
+        Value::float(count)
+    }
+}
+
 pub fn native_sort(arg_count: u32, args: NonNull<Value>, vm: *mut VM) -> Value {
     unsafe {
         if arg_count != 3 {

@@ -7,8 +7,7 @@ for _ in 0>10 {
 }
 
 let n = split_into(input, "\n", 0);
-let i = 0;
-while i < n {
+for i in 0>n {
     split_into(0[i], 1);
     2[i] = num(1[0]);
     let b = num(1[1]);
@@ -18,32 +17,26 @@ while i < n {
     } else {
         4[b] = 4[b] + 1;
     }
-    i = i + 1;
 }
 
-print(n);
 sort(2, 0, n);
 sort(3, 0, n);
 
 let sum = 0;
 
-i = 0;
-while i < n {
+for i in 0>n {
     sum = sum + abs(3[i] - 2[i]);
-    i = i + 1;
 }
 
 print(sum);
 
 sum = 0;
 
-i = 0;
-while i < n {
+for i in 0>n {
     let a = 2[i];
     if 4[a] != null {
         sum = sum + 4[a] * a;
     }
-    i = i + 1;
 }
 
 print(sum);
