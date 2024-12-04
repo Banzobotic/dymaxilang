@@ -3,7 +3,7 @@ use std::{
     ptr::{self, NonNull},
 };
 
-use super::{chunk::Chunk, value::Value};
+use super::{chunk::Chunk, value::Value, VM};
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -143,7 +143,7 @@ impl ObjFunction {
     }
 }
 
-pub type NativeFn = fn(u32, NonNull<Value>) -> Value;
+pub type NativeFn = fn(u32, NonNull<Value>, *mut VM) -> Value;
 
 #[repr(C)]
 pub struct ObjNative {

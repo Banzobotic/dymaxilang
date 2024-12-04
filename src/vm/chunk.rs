@@ -64,9 +64,10 @@ impl Chunk {
     }
 
     #[cfg(feature = "local_map_scopes")]
-    pub fn push_map(&mut self, target: usize) {
+    pub fn push_map(&mut self, target: usize, line: u32) {
         self.code.insert(target, OpCode::PushMap as u8);
-        self.push_opcode(OpCode::PopMap);
+        self.lines.insert(target, line);
+        self.push_byte(OpCode::PopMap as u8, line);
     }
 
     pub fn add_constant(&mut self, constant: Value) -> usize {

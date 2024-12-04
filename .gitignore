@@ -1,4 +1,4 @@
 /target
 Cargo.lock
 profile.json
-*.py
+examples/input

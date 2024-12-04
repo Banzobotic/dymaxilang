@@ -1,0 +1,25 @@
+let start = time();
+
+for i in 2>=4000000 {
+    0[i] = true;
+}
+
+for i in 2>=2000 {
+    if 0[i] {
+        let j = i * i;
+        while j <= 4000000 {
+            0[j] = false;
+            j = j + i;
+        }
+    }
+}
+
+let count = 0;
+for i in 2>=4000000 {
+    if 0[i] {
+        count = count + 1;
+    }
+}
+print(count);
+print(time() - start);
+

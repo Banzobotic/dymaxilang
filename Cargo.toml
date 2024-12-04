@@ -11,3 +11,5 @@ trace_execution = []
 local_map_scopes = []
 
 [dependencies]
+ordered-float = "4.5"
+escape-bytes = "0.1.1"

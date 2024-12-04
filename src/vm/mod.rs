@@ -39,10 +39,7 @@ impl VM {
     }
 
     #[cold]
-    fn runtime_error(&self, ip: *const u8, message: String) {
-        // sleep encourages the compiler to avoid this branch because it seems more expensive
-        // this results in a small but measurable increase in performance when there are no errors
-        std::thread::sleep(std::time::Duration::from_millis(10));
+    pub fn runtime_error(&self, ip: *const u8, message: String) -> ! {
         let chunk = unsafe { &(*(*self.frame_top).function.function).chunk };
         let offset = unsafe { ip.offset_from(chunk.code_ptr()) };
         let line = chunk.lines[offset as usize];
@@ -77,12 +74,33 @@ impl VM {
             }
         }
 
-        for frame in self.frames.iter_mut() {
-            self.gc.mark(frame.function)
+        for frame in self.frames.iter() {
+            self.gc.mark(frame.function);
+
+            #[cfg(feature = "local_map_scopes")]
+            for scope in frame.local_maps.iter() {
+                for (value, map) in scope.iter() {
+                    self.gc.mark(*value);
+
+                    for (key, value) in map.iter() {
+                        self.gc.mark(*key);
+                        self.gc.mark(*value);
+                    }
+                }
+            }
         }
 
-        for value in self.globals.globals.iter_mut() {
+        for value in self.globals.globals.iter() {
             self.gc.mark(*value);
+        }
+
+        for (value, map) in self.globals.global_map.iter() {
+            self.gc.mark(*value);
+
+            for (key, value) in map.iter() {
+                self.gc.mark(*key);
+                self.gc.mark(*value);
+            }
         }
     }
 
@@ -106,7 +124,7 @@ impl VM {
                     let native = unsafe { (*function.as_obj().native).function };
                     let result = native(arg_count as u32, unsafe {
                         self.stack.top.sub(arg_count as usize)
-                    });
+                    }, self as *mut VM);
                     self.stack.top = unsafe { self.stack.top.sub(arg_count as usize + 1) };
                     self.stack.push(result);
                 }
@@ -249,7 +267,8 @@ impl VM {
             {
                 let mut stack_ptr = self.stack.base();
                 while stack_ptr != sp.as_ptr() {
-                    print!("[ {} ]", unsafe { *stack_ptr });
+                    let value_str = String::from_utf8(escape_bytes::escape(format!("{}", unsafe {*stack_ptr}).as_bytes())).unwrap();
+                    print!("[ {} ]", value_str.chars().take(usize::min(20, value_str.len())).collect::<String>());
                     stack_ptr = unsafe { stack_ptr.add(1) };
                 }
                 println!();
@@ -356,9 +375,10 @@ impl VM {
                     stack_push!(self.stack.base().add(offset + fp_offset).read());
                 }
                 Op::SetLocal => unsafe {
+                    let fp_offset = self.frame().fp_offset;
                     self.stack
                         .base_mut()
-                        .add(next_byte!() as usize)
+                        .add(next_byte!() as usize + fp_offset)
                         .write(stack_peek!(0));
                 },
                 Op::GetMap => {
@@ -382,7 +402,7 @@ impl VM {
                         }
                     }
 
-                    self.runtime_error(ip, format!("key not found"));
+                    stack_push!(Value::NULL);
                 }
                 Op::SetMap => {
                     let value = stack_pop!();

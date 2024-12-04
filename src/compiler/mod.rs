@@ -1,5 +1,3 @@
-use std::{ptr::NonNull, time::SystemTime};
-
 use lexer::{AtomKind, Lexer, OpKind, Token, TokenKind};
 
 use crate::vm::{
@@ -10,6 +8,7 @@ use crate::vm::{
 };
 
 mod lexer;
+mod natives;
 
 struct Parser {
     lexer: lexer::Lexer,
@@ -229,6 +228,12 @@ impl Compiler {
         }
     }
 
+    #[cfg(feature = "local_map_scopes")]
+    pub fn push_map(&mut self, target: usize) {
+        let line = self.parser.previous().line;
+        self.chunk_mut().push_map(target, line);
+    }
+
     pub fn push_jump(&mut self, opcode: OpCode) -> usize {
         self.push_opcode(opcode);
         self.push_byte(0xFF);
@@ -325,6 +330,10 @@ impl Compiler {
     fn string(&mut self) {
         let token = self.parser.previous();
         let value = self.parser.lexer.get_token_string(&token);
+        let Ok(value) = escape_bytes::unescape(value.as_bytes()).map(|v| String::from_utf8(v).unwrap()) else {
+            self.parser.error("invalid escape in string");
+            return;
+        };
         let obj = ObjString::new(&value[1..value.len() - 1]);
         let obj = self.vm.alloc(obj);
         self.push_constant(Value::obj(obj));
@@ -475,15 +484,7 @@ impl Compiler {
                 }
                 OpKind::Plus | OpKind::Minus => (11, 12),
                 OpKind::Mul | OpKind::Div => (13, 14),
-                OpKind::OpenParen => (17, 18),
-                _ => return None,
-            };
-            Some(ret)
-        }
-
-        fn postfix_bp(op: OpKind) -> Option<(u8, ())> {
-            let ret = match op {
-                OpKind::OpenSquare => (17, ()),
+                OpKind::OpenParen | OpKind::OpenSquare => (17, 18),
                 _ => return None,
             };
             Some(ret)
@@ -531,18 +532,6 @@ impl Compiler {
         }
 
         while let TokenKind::Op(op) = self.parser.current().kind {
-            if let Some((l_bp, ())) = postfix_bp(op) {
-                if l_bp < min_bp {
-                    break;
-                }
-                self.parser.advance();
-
-                match op {
-                    OpKind::OpenSquare => self.map_access(),
-                    _ => unreachable!("{:?} not handled", op),
-                }
-            }
-
             if let Some((l_bp, r_bp)) = infix_bp(op) {
                 if l_bp < min_bp {
                     break;
@@ -563,6 +552,9 @@ impl Compiler {
                     continue;
                 } else if op == OpKind::OpenParen {
                     self.call();
+                    continue;
+                } else if op == OpKind::OpenSquare {
+                    self.map_access();
                     continue;
                 }
 
@@ -635,7 +627,7 @@ impl Compiler {
             .pop()
             .unwrap();
         if map_set {
-            self.chunk_mut().push_map(target);
+            self.push_map(target);
         }
     }
 
@@ -898,8 +890,16 @@ impl Compiler {
     }
 
     fn define_natives(&mut self) {
-        self.define_native("clock", clock_native);
-        self.define_native("print", print_native);
+        use natives::*;
+
+        self.define_native("time", native_time);
+        self.define_native("print", native_print);
+        self.define_native("read", native_read);
+        self.define_native("num", native_num);
+        self.define_native("abs", native_abs);
+        self.define_native("split", native_split);
+        self.define_native("split_into", native_split_into);
+        self.define_native("sort", native_sort);
     }
 
     pub fn compile(mut self) -> VM {
@@ -926,18 +926,4 @@ impl Compiler {
 
         self.vm
     }
-}
-
-fn clock_native(_arg_count: u32, _args: NonNull<Value>) -> Value {
-    Value::float(
-        SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_secs_f64(),
-    )
-}
-
-fn print_native(_arg_count: u32, args: NonNull<Value>) -> Value {
-    println!("{}", unsafe { args.read() });
-    Value::NULL
 }

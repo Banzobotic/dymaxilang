@@ -1,6 +1,8 @@
 use std::fmt;
 use std::mem;
 
+use ordered_float::OrderedFloat;
+
 use super::object::Obj;
 use super::object::ObjCommon;
 use super::object::ObjKind;
@@ -92,7 +94,7 @@ impl Value {
 impl std::cmp::PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         if self.is_float() && other.is_float() {
-            self.as_float() == other.as_float()
+            unsafe {std::mem::transmute::<f64, OrderedFloat<f64>>(self.as_float()) == std::mem::transmute::<f64, OrderedFloat<f64>>(other.as_float()) }
         } else if self.is_obj() && other.is_obj() {
             self.as_obj() == other.as_obj()
         } else {
@@ -106,6 +108,8 @@ impl std::hash::Hash for Value {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         if self.is_string() {
             unsafe { (*self.as_obj().string).value.hash(state) };
+        } else if self.is_float() {
+            unsafe { std::mem::transmute::<f64, OrderedFloat<f64>>(self.as_float()).hash(state) }
         } else {
             self.value.hash(state);
         }
