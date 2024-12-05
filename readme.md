@@ -37,6 +37,29 @@ let n = chars(hi);
 print("chars"[0] + "chars"[n - 1]); // hd
 ```
 
+The global hashmap shows its true power in more involved string processing tasks that take advantage of its 2d nature:
+
+```rust
+// input.txt:
+// abcde
+// fghij
+// klmno
+// pqrst
+// uvwxy
+
+let input = read("input.txt");
+let n = split(input, "\n");
+for i in 0>n {
+	chars_into("split"[i], i);
+}
+
+let str = "";
+for i in 0>n {
+	str = str + i[i];
+}
+print(str); // agmsy
+```
+
 Users should be aware that values have the same associated hashmap in every scope, and it is up to them to ensure that functions they call don't unintentionally overwrite hashmap entries they are still using. 
 
 ```rust
