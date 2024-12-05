@@ -2,7 +2,7 @@
 
 ## Inspiration
 
-One of javascript's many unusual features is the ability to access the field table of any object with convenient synax:
+One of javascript's many unusual features is the ability to access the field table of any object with convenient syntax:
 
 ```js
 let regex = new RegExp();
@@ -14,7 +14,7 @@ But what if this applied to every value and not just objects? And what if any eq
 
 ## The Language
 
-We think it should be obvious to users that the map set on line 2 actually refers to the value 3 rather than the variable `foo` itself.  
+We think it should be obvious to users that the map set on line 2 refers to the value 3 rather than the variable `foo` itself.  
 
 ```rust
 let foo = 3;
@@ -29,7 +29,7 @@ Naturally revolutionary features like this one require sacrificing unimportant f
 print("hello world"[0]); // hi
 ```
 
-Instead you can use the `chars` function to dump the string into the global hashmap.
+Instead, you can use the `chars` function to dump the string into the global hashmap.
 
 ```rust
 let hi = "hello world";
@@ -52,7 +52,7 @@ print(0[0]); // world
 
 ## Performance
 
-In a perfect world dymaxilang wouldn't have if statements, and instead all branching would be handled with dynamic dispatch as follows:
+In a perfect world, dymaxilang wouldn't have if statements, and instead, all branching would be handled with dynamic dispatch as follows:
 
 ```rust
 let fib = fn (n) {
@@ -67,7 +67,7 @@ let fib = fn (n) {
 };
 ```
 
-Sadly the performance cost was too great for the committee to justify, so begrudgingly if statements were added
+Sadly the performance cost was too great for the committee to justify, so begrudgingly if statements were added.
 
 ```rust
 let fib = fn (n) {
@@ -82,6 +82,6 @@ Similar performance gains are observed when computing the ackermann function, wi
 
 Sadly, the pursuit of perfection comes at a cost. It turns out that requiring two hashmap accesses to access a single value is really inefficient if that data could have been stored in a list. Computing how many of the first 4 million numbers are prime took 1.4 seconds in python but 2.9 seconds in dymaxilang. 
 
-According to the committee, a more representative example is 2024 Advent of Code Day 1 (because it offered a more favourable result). With input was repeated 10 times to get a more measurable runtime, the python program took 1.6 seconds, while the dymaxilang program took 2.3 seconds. The committee considers this performance tradeoff acceptable in the pursuit of perfection. 
+According to the committee, a more representative example is 2024 Advent of Code Day 1 (because it offered a more favourable result). With the input repeated 10 times to get a more measurable runtime, the python program took 1.6 seconds, while the dymaxilang program took 2.3 seconds. The committee considers this performance tradeoff acceptable in the pursuit of perfection. 
 
 All programs mentioned, including their python counterparts, can be found in [examples](examples).
