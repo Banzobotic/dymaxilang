@@ -52,7 +52,12 @@ impl Obj {
 
 impl Debug for Obj {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{self}")
+        match self.kind() {
+            ObjKind::String => write!(f, "\"{}\"", unsafe {
+                String::from_utf8(escape_bytes::escape((*self.string).value.as_bytes())).unwrap()
+            }),
+            _ => write!(f, "{self}"),
+        }
     }
 }
 

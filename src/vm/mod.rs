@@ -40,6 +40,10 @@ impl VM {
 
     #[cold]
     pub fn runtime_error(&self, ip: *const u8, message: String) -> ! {
+        // this sleep improves the performance of the vm
+        // this is likely due to a weird interaction with binary layout or branch prediction
+        // remove if this no longer results in a performance gain
+        std::thread::sleep(std::time::Duration::from_millis(10));
         let chunk = unsafe { &(*(*self.frame_top).function.function).chunk };
         let offset = unsafe { ip.offset_from(chunk.code_ptr()) };
         let line = chunk.lines[offset as usize];
@@ -122,17 +126,25 @@ impl VM {
                 ObjKind::Function => self.call(function.as_obj(), arg_count),
                 ObjKind::Native => {
                     let native = unsafe { (*function.as_obj().native).function };
-                    let result = native(arg_count as u32, unsafe {
-                        self.stack.top.sub(arg_count as usize)
-                    }, self as *mut VM);
+                    let result = native(
+                        arg_count as u32,
+                        unsafe { self.stack.top.sub(arg_count as usize) },
+                        self as *mut VM,
+                    );
                     self.stack.top = unsafe { self.stack.top.sub(arg_count as usize + 1) };
                     self.stack.push(result);
                 }
-                _ => self.runtime_error(unsafe { (*self.frame_top).ip }, format!("can only call functions")),
+                _ => self.runtime_error(
+                    unsafe { (*self.frame_top).ip },
+                    format!("can only call functions"),
+                ),
             }
             return;
         }
-        self.runtime_error(unsafe { (*self.frame_top).ip }, format!("can only call functions"));
+        self.runtime_error(
+            unsafe { (*self.frame_top).ip },
+            format!("can only call functions"),
+        );
     }
 
     pub fn push_call_frame(&mut self, function: Obj) {
@@ -220,13 +232,13 @@ impl VM {
         }
 
         macro_rules! binary_op {
-            ($op:tt) => {
+            ($op:tt, $msg:expr) => {
                 {
                     let b = stack_pop!();
                     let a = stack_pop!();
 
                     if !a.is_float() || !b.is_float() {
-                        self.runtime_error(ip, format!("can only do arithmetic operations on floats"));
+                        self.runtime_error(ip, format!("attemped to {0} {1:?} and {2:?}, but can only {0} numbers", $msg, a, b));
                     }
 
                     stack_push!(Value::float(a.as_float() $op b.as_float()));
@@ -252,7 +264,7 @@ impl VM {
                     let a = stack_pop!();
 
                     if !a.is_float() || !b.is_float() {
-                        self.runtime_error(ip, format!("can only compare floats"));
+                        self.runtime_error(ip, format!("attemped to compare {:?} and {:?}, but can only compare numbers", a, b));
                     }
 
                     stack_push!(Value::bool(a.as_float() $op b.as_float()));
@@ -267,8 +279,17 @@ impl VM {
             {
                 let mut stack_ptr = self.stack.base();
                 while stack_ptr != sp.as_ptr() {
-                    let value_str = String::from_utf8(escape_bytes::escape(format!("{}", unsafe {*stack_ptr}).as_bytes())).unwrap();
-                    print!("[ {} ]", value_str.chars().take(usize::min(20, value_str.len())).collect::<String>());
+                    let value_str = String::from_utf8(escape_bytes::escape(
+                        format!("{}", unsafe { *stack_ptr }).as_bytes(),
+                    ))
+                    .unwrap();
+                    print!(
+                        "[ {} ]",
+                        value_str
+                            .chars()
+                            .take(usize::min(20, value_str.len()))
+                            .collect::<String>()
+                    );
                     stack_ptr = unsafe { stack_ptr.add(1) };
                 }
                 println!();
@@ -315,12 +336,12 @@ impl VM {
                         let obj = self.alloc(obj);
                         stack_push!(Value::obj(obj))
                     } else {
-                        self.runtime_error(ip, format!("can only add strings and floats"));
+                        self.runtime_error(ip, format!("attempted to add {:?} and {:?}, but can only add strings and numbers", a, b));
                     }
                 }
-                Op::Sub => binary_op!(-),
-                Op::Mul => binary_op!(*),
-                Op::Div => binary_op!(/),
+                Op::Sub => binary_op!(-, "subtract"),
+                Op::Mul => binary_op!(*, "multiply"),
+                Op::Div => binary_op!(/, "divide"),
                 Op::Equal => equality_op!(==),
                 Op::NotEqual => equality_op!(!=),
                 Op::Greater => comparison_op!(>),
@@ -329,7 +350,13 @@ impl VM {
                 Op::LessEqual => comparison_op!(<=),
                 Op::Negate => {
                     if !stack_peek!(0).is_float() {
-                        self.runtime_error(ip, format!("can only negate numbers"));
+                        self.runtime_error(
+                            ip,
+                            format!(
+                                "attemped to negate {:?}, but can only negate numbers",
+                                stack_peek!(0)
+                            ),
+                        );
                     }
                     unsafe {
                         let top_ptr = sp.sub(1);
@@ -338,7 +365,13 @@ impl VM {
                 }
                 Op::Not => {
                     if !stack_peek!(0).is_bool() {
-                        self.runtime_error(ip, format!("can only not boolean values"));
+                        self.runtime_error(
+                            ip,
+                            format!(
+                                "attemped to not {:?}, but can only not boolean values",
+                                stack_peek!(0)
+                            ),
+                        );
                     }
                     unsafe {
                         let top_ptr = sp.sub(1);
@@ -354,7 +387,10 @@ impl VM {
                     let value = self.globals.get(idx);
 
                     if value.is_undef() {
-                        self.runtime_error(ip, format!("attempted to get value of undefined variable"));
+                        self.runtime_error(
+                            ip,
+                            format!("attempted to get value of undefined variable"),
+                        );
                     }
 
                     stack_push!(value);
@@ -364,7 +400,10 @@ impl VM {
                     let prev_value = self.globals.get(idx);
 
                     if prev_value.is_undef() {
-                        self.runtime_error(ip, format!("attemped to set value of undefined variable"));
+                        self.runtime_error(
+                            ip,
+                            format!("attemped to set value of undefined variable"),
+                        );
                     }
 
                     self.globals.set(idx, stack_peek!(0));

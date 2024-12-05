@@ -94,7 +94,10 @@ impl Value {
 impl std::cmp::PartialEq for Value {
     fn eq(&self, other: &Self) -> bool {
         if self.is_float() && other.is_float() {
-            unsafe {std::mem::transmute::<f64, OrderedFloat<f64>>(self.as_float()) == std::mem::transmute::<f64, OrderedFloat<f64>>(other.as_float()) }
+            unsafe {
+                std::mem::transmute::<f64, OrderedFloat<f64>>(self.as_float())
+                    == std::mem::transmute::<f64, OrderedFloat<f64>>(other.as_float())
+            }
         } else if self.is_obj() && other.is_obj() {
             self.as_obj() == other.as_obj()
         } else {
@@ -136,6 +139,18 @@ impl fmt::Display for Value {
 
 impl fmt::Debug for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{self}")
+        let str = if self.is_float() {
+            self.as_float().to_string()
+        } else if self.is_bool() {
+            self.as_bool().to_string()
+        } else if self.is_null() {
+            String::from("null")
+        } else if self.is_obj() {
+            format!("{:?}", self.as_obj())
+        } else {
+            String::from("undefined")
+        };
+
+        write!(f, "{str}")
     }
 }

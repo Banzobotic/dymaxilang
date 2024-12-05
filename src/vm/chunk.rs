@@ -164,7 +164,8 @@ impl Chunk {
             | Op::JumpIfFalseNoPop
             | Op::JumpIfTrueNoPop
             | Op::JumpUp) => {
-                let jump_offset = (self.code[offset + 1] as usize) << 8 | self.code[offset + 2] as usize;
+                let jump_offset =
+                    (self.code[offset + 1] as usize) << 8 | self.code[offset + 2] as usize;
                 println!("{:16} {:04X}", format!("{:?}", op), jump_offset);
                 offset + 3
             }

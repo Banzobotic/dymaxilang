@@ -247,7 +247,7 @@ impl Compiler {
         if offset > u16::MAX as usize {
             self.parser.error("loop too long");
         }
-        
+
         self.push_opcode(OpCode::JumpUp);
         self.push_byte((offset >> 8) as u8);
         self.push_byte((offset & 0xFF) as u8)
@@ -330,7 +330,9 @@ impl Compiler {
     fn string(&mut self) {
         let token = self.parser.previous();
         let value = self.parser.lexer.get_token_string(&token);
-        let Ok(value) = escape_bytes::unescape(value.as_bytes()).map(|v| String::from_utf8(v).unwrap()) else {
+        let Ok(value) =
+            escape_bytes::unescape(value.as_bytes()).map(|v| String::from_utf8(v).unwrap())
+        else {
             self.parser.error("invalid escape in string");
             return;
         };
@@ -795,11 +797,11 @@ impl Compiler {
         } else if self.parser.check(TokenKind::Atom(AtomKind::Ident)) {
             self.identifier();
         } else {
-            self.parser.error("expected either integer or identifer for start of range");
+            self.parser
+                .error("expected either integer or identifer for start of range");
         }
 
         let start = self.chunk_mut().jump_target();
-
 
         let var_idx = (self.locals().len() - 1) as u8;
         self.push_opcode(OpCode::GetLocal);
@@ -820,7 +822,8 @@ impl Compiler {
         } else if self.parser.check(TokenKind::Atom(AtomKind::Ident)) {
             self.identifier();
         } else {
-            self.parser.error("expected either integer or identifer for end of range");
+            self.parser
+                .error("expected either integer or identifer for end of range");
         }
         self.push_opcode(op);
         self.mark_initialised();
