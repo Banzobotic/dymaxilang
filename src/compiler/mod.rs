@@ -797,11 +797,9 @@ impl Compiler {
         } else {
             self.parser.error("expected either integer or identifer for start of range");
         }
-        self.mark_initialised();
 
         let start = self.chunk_mut().jump_target();
 
-        self.begin_scope();
 
         let var_idx = (self.locals().len() - 1) as u8;
         self.push_opcode(OpCode::GetLocal);
@@ -825,8 +823,10 @@ impl Compiler {
             self.parser.error("expected either integer or identifer for end of range");
         }
         self.push_opcode(op);
+        self.mark_initialised();
         let jump = self.push_jump(OpCode::JumpIfFalse);
 
+        self.begin_scope();
         self.parser
             .consume(TokenKind::OpenBrace, "expected '{' after range");
         self.block();
