@@ -32,7 +32,7 @@ print("hello world"[0]); // hi
 Instead, you can use the `chars` function to dump the string into the global hashmap.
 
 ```rust
-let hi = "hello world";
+let bar = "hello world";
 let n = chars(hi);
 print("chars"[0] + "chars"[n - 1]); // hd
 ```
@@ -80,7 +80,7 @@ This took the runtime for `fib(35)` from 5.0 seconds to 0.53 seconds, faster tha
 
 Similar performance gains are observed when computing the ackermann function, with `ackermann(3, 10)` taking 5.5 seconds in python and 0.85 seconds in dymaxilang. 
 
-Sadly, the pursuit of perfection comes at a cost. It turns out that requiring two hashmap accesses to access a single value is really inefficient if that data could have been stored in a list. Computing how many of the first 4 million numbers are prime took 1.4 seconds in python but 2.9 seconds in dymaxilang. 
+Sadly, the pursuit of perfection comes at a cost. It turns out that requiring two hashmap accesses to get a single value is really inefficient if that data could have been stored in a list. Computing how many of the first 4 million numbers are prime took 1.4 seconds in python but 2.9 seconds in dymaxilang. 
 
 According to the committee, a more representative example is 2024 Advent of Code Day 1 (because it offered a more favourable result). With the input repeated 10 times to get a more measurable runtime, the python program took 1.6 seconds, while the dymaxilang program took 2.3 seconds. The committee considers this performance tradeoff acceptable in the pursuit of perfection. 
 
