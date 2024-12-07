@@ -33,7 +33,7 @@ Instead, you can use the `chars` function to dump the string into the global has
 
 ```rust
 let bar = "hello world";
-let n = chars(hi);
+let n = chars(bar);
 print("chars"[0] + "chars"[n - 1]); // hd
 ```
 
